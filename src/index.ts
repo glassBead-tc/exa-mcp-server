@@ -63,6 +63,8 @@ if (!API_KEY) {
  * The server provides tools that enable:
  * - Real-time web searching with configurable parameters
  * - Research paper searches
+ * - Twitter searches
+ * - Manage Websets through Claude
  * - And more to come!
  */
 
