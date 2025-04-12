@@ -6,8 +6,8 @@ import "./webSearch.js";
 import "./researchPaperSearch.js";
 import "./twitterSearch.js";
 import "./websets/items.js";
-import "./searches";
-import "./websets";
+// import "./searches";
+import "./websets/index.js";
 
 // When adding a new tool, import it here
 // import "./newTool.js"; 

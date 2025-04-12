@@ -71,7 +71,17 @@ toolRegistry["create_search"] = {
         };
       }
 
-
+      return {
+        content: [{
+          type: "text",
+          text: `Create Search error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
 
 toolRegistry["get_search"] = {
   name: "get_search",
@@ -138,16 +148,6 @@ toolRegistry["get_search"] = {
   enabled: true
 };
 
-      return {
-        content: [{
-          type: "text",
-          text: `Create Search error: ${error instanceof Error ? error.message : String(error)}`
-        }],
-        isError: true
-      };
-
-
-
 toolRegistry["cancel_search"] = {
   name: "cancel_search",
   description: "Cancel a running Search by ID using Exa's Websets API.",
@@ -208,77 +208,6 @@ toolRegistry["cancel_search"] = {
         }],
         isError: true
       };
-    }
-  },
-  enabled: true
-};
-
-
-toolRegistry["cancel_search"] = {
-  name: "cancel_search",
-  description: "Cancel a running Search by ID using Exa's Websets API.",
-  schema: {
-    apiKey: z.string().describe("Your Exa API key"),
-    webset: z.string().describe("The Webset ID"),
-    id: z.string().describe("The Search ID")
-  },
-  handler: async ({ apiKey, webset, id }) => {
-    const requestId = `cancel_search-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const logger = createRequestLogger(requestId, 'cancel_search');
-
-    logger.start(`Canceling Search ${id} in Webset ${webset}`);
-
-    try {
-      const axiosInstance = axios.create({
-        baseURL: "https://api.exa.ai",
-        headers: {
-          'accept': 'application/json',
-          'x-api-key': apiKey
-        },
-        timeout: 30000
-      });
-
-      logger.log("Sending POST request to Exa Websets API");
-
-      const response = await axiosInstance.post(`/websets/v0/websets/${encodeURIComponent(webset)}/searches/${encodeURIComponent(id)}/cancel`);
-
-      logger.log("Received response from Exa Websets API");
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify(response.data, null, 2)
-        }]
-      };
-    } catch (error) {
-      logger.error(error);
-
-      if (axios.isAxiosError(error)) {
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-
-        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
-        return {
-          content: [{
-            type: "text",
-            text: `Cancel Search error (${statusCode}): ${errorMessage}`
-          }],
-          isError: true
-        };
-      }
-
-      return {
-        content: [{
-          type: "text",
-          text: `Cancel Search error: ${error instanceof Error ? error.message : String(error)}`
-        }],
-        isError: true
-      };
-    }
-  },
-  enabled: true
-};
-
     }
   },
   enabled: true
