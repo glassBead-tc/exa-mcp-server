@@ -13,14 +13,20 @@ The Model Context Protocol (MCP) is a system that lets AI apps, like Claude Desk
 
 ## What does this server do? 🚀
 
-The Exa MCP server:
-- Enables AI assistants to perform web searches using Exa's powerful search API
-- Provides structured search results including titles, URLs, and content snippets
-- Supports real-time web crawling for fresh content
-- Integrates with Exa Websets API for creating and managing curated web content collections
-- Provides complete webhook and events management for Websets automation workflows
+The Exa MCP server provides two main sets of functionality:
+
+### 1. Direct Exa Search API Access
+- Enables real-time web searches with full content extraction using Exa's powerful search API
+- Supports specialized searches for Twitter/X.com content and academic research papers
+- Features HTTP streaming support for faster results delivery
 - Handles rate limiting and error cases gracefully
 
+### 2. Exa Websets Management
+- Create and manage curated collections of web content (Websets)
+- Track and manage items within your Websets
+- Configure webhooks for automation workflows
+- Monitor events related to your Websets
+- Automate content curation workflows
 
 ## Prerequisites 📋
 
@@ -129,12 +135,12 @@ Replace `your-api-key-here` with your actual Exa API key from [dashboard.exa.ai/
 
 The Exa MCP server includes the following tools:
 
-#### Search Tools
-- **web_search**: Performs real-time web searches with optimized results and content extraction.
-- **research_paper_search**: Specialized search focused on academic papers and research content.
-- **twitter_search**: Dedicated Twitter/X.com search that finds tweets, profiles, and conversations.
+#### Direct Search Tools
+- **web_search**: Performs real-time web searches with optimized results and content extraction. Supports HTTP streaming for faster results delivery.
+- **research_paper_search**: Specialized search focused on academic papers and research content. Supports HTTP streaming.
+- **twitter_search**: Dedicated Twitter/X.com search that finds tweets, profiles, and conversations. Supports HTTP streaming.
 
-#### Websets Tools
+#### Websets Management Tools
 - **create_webset**: Create a new Webset for curated web content collections.
 - **get_webset**: Retrieve a specific Webset by ID.
 - **update_webset**: Update an existing Webset's metadata.
@@ -144,7 +150,7 @@ The Exa MCP server includes the following tools:
 
 #### Webset Items Tools
 - **get_item**: Retrieve a specific item from a Webset.
-- **list_items**: List all items in a Webset with filtering options.
+- **list_items**: List all items in a Webset with filtering options and streaming support.
 
 #### Webhook Management Tools
 - **create_webhook**: Register a new webhook for Websets events.
@@ -155,7 +161,7 @@ The Exa MCP server includes the following tools:
 - **list_webhook_attempts**: View webhook delivery attempts for debugging.
 
 #### Events Tools
-- **list_events**: List all events that have occurred in the Websets system.
+- **list_events**: List all events that have occurred in the Websets system. Supports HTTP streaming.
 - **get_event**: Retrieve a specific event by ID.
 
 You can choose which tools to enable by adding the `--tools` parameter to your Claude Desktop configuration:
@@ -207,9 +213,9 @@ npx exa-mcp-server --list-tools
 
 ## Usage 🎯
 
-Once configured, you can ask Claude to perform web searches or manage Exa Websets:
+Once configured, you can interact with the Exa MCP server through Claude:
 
-### Web Search Examples
+### Direct Search Examples
 
 ```
 Can you search for recent developments in quantum computing?
@@ -231,11 +237,21 @@ Search Twitter for posts from @elonmusk about SpaceX.
 Find tweets from @samaltman that were published in the last week about AI safety.
 ```
 
-### Websets & Webhooks Examples
+### Websets Management Examples
 
 ```
 Create a new Webset to collect information about renewable energy startups in Europe.
 ```
+
+```
+List all items in my webset about climate technology.
+```
+
+```
+Update my webset description to include more specific focus areas.
+```
+
+### Webhooks & Events Examples
 
 ```
 Set up a webhook for my Webset that notifies my system whenever new items are added.
@@ -252,8 +268,8 @@ Show me all events related to my Webset from the last 24 hours.
 The server will:
 
 1. Process the request appropriately based on the command
-2. Query the Exa API with optimal settings
-3. Return formatted results to Claude
+2. Query the appropriate Exa API endpoint with optimal settings
+3. Return formatted results to Claude, using streaming when available
 4. Handle webhooks and events for automation
 
 
