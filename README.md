@@ -16,9 +16,10 @@ The Model Context Protocol (MCP) is a system that lets AI apps, like Claude Desk
 The Exa MCP server:
 - Enables AI assistants to perform web searches using Exa's powerful search API
 - Provides structured search results including titles, URLs, and content snippets
-- Caches recent searches as resources for reference
-- Handles rate limiting and error cases gracefully
 - Supports real-time web crawling for fresh content
+- Integrates with Exa Websets API for creating and managing curated web content collections
+- Provides complete webhook and events management for Websets automation workflows
+- Handles rate limiting and error cases gracefully
 
 
 ## Prerequisites 📋
@@ -128,9 +129,34 @@ Replace `your-api-key-here` with your actual Exa API key from [dashboard.exa.ai/
 
 The Exa MCP server includes the following tools:
 
+#### Search Tools
 - **web_search**: Performs real-time web searches with optimized results and content extraction.
 - **research_paper_search**: Specialized search focused on academic papers and research content.
 - **twitter_search**: Dedicated Twitter/X.com search that finds tweets, profiles, and conversations.
+
+#### Websets Tools
+- **create_webset**: Create a new Webset for curated web content collections.
+- **get_webset**: Retrieve a specific Webset by ID.
+- **update_webset**: Update an existing Webset's metadata.
+- **list_websets**: List all available Websets with pagination support.
+- **cancel_webset**: Cancel a running Webset.
+- **delete_webset**: Delete a Webset by ID.
+
+#### Webset Items Tools
+- **get_item**: Retrieve a specific item from a Webset.
+- **list_items**: List all items in a Webset with filtering options.
+
+#### Webhook Management Tools
+- **create_webhook**: Register a new webhook for Websets events.
+- **get_webhook**: Retrieve a specific webhook by ID.
+- **update_webhook**: Update an existing webhook's configuration.
+- **delete_webhook**: Delete a webhook by ID.
+- **list_webhooks**: List all registered webhooks.
+- **list_webhook_attempts**: View webhook delivery attempts for debugging.
+
+#### Events Tools
+- **list_events**: List all events that have occurred in the Websets system.
+- **get_event**: Retrieve a specific event by ID.
 
 You can choose which tools to enable by adding the `--tools` parameter to your Claude Desktop configuration:
 
@@ -143,7 +169,7 @@ You can choose which tools to enable by adding the `--tools` parameter to your C
       "command": "npx",
       "args": [
         "/path/to/exa-mcp-server/build/index.js",
-        "--tools=twitter_search"
+        "--tools=web_search,create_webset,list_webhooks"
       ],
       "env": {
         "EXA_API_KEY": "your-api-key-here"
@@ -152,27 +178,6 @@ You can choose which tools to enable by adding the `--tools` parameter to your C
   }
 }
 ```
-
-For enabling multiple tools, use a comma-separated list:
-
-```json
-{
-  "mcpServers": {
-    "exa": {
-      "command": "npx",
-      "args": [
-        "/path/to/exa-mcp-server/build/index.js",
-        "--tools=web_search,research_paper_search,twitter_search"
-      ],
-      "env": {
-        "EXA_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
-```
-
-If you don't specify any tools, all tools enabled by default will be used.
 
 ### 4. Restart Claude Desktop
 
@@ -202,7 +207,9 @@ npx exa-mcp-server --list-tools
 
 ## Usage 🎯
 
-Once configured, you can ask Claude to perform web searches. Here are some example prompts:
+Once configured, you can ask Claude to perform web searches or manage Exa Websets:
+
+### Web Search Examples
 
 ```
 Can you search for recent developments in quantum computing?
@@ -224,12 +231,30 @@ Search Twitter for posts from @elonmusk about SpaceX.
 Find tweets from @samaltman that were published in the last week about AI safety.
 ```
 
+### Websets & Webhooks Examples
+
+```
+Create a new Webset to collect information about renewable energy startups in Europe.
+```
+
+```
+Set up a webhook for my Webset that notifies my system whenever new items are added.
+```
+
+```
+List all my active webhooks and check their recent delivery attempts.
+```
+
+```
+Show me all events related to my Webset from the last 24 hours.
+```
+
 The server will:
 
-1. Process the search request
-2. Query the Exa API with optimal settings (including live crawling)
+1. Process the request appropriately based on the command
+2. Query the Exa API with optimal settings
 3. Return formatted results to Claude
-4. Cache the search for future reference
+4. Handle webhooks and events for automation
 
 
 ## Testing with MCP Inspector 🔍

@@ -22,7 +22,13 @@ export interface ToolRegistry {
 export const API_CONFIG = {
   BASE_URL: 'https://api.exa.ai',
   ENDPOINTS: {
-    SEARCH: '/search'
+    SEARCH: '/search',
+    WEBSETS: {
+      BASE: '/websets/v0',
+      WEBSETS: '/websets/v0/websets',
+      WEBHOOKS: '/websets/v0/webhooks',
+      EVENTS: '/websets/v0/events'
+    }
   },
   DEFAULT_NUM_RESULTS: 5,
   DEFAULT_MAX_CHARACTERS: 3000

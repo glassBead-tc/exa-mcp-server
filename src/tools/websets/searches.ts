@@ -1,7 +1,7 @@
 import { z } from "zod";
 import axios from "axios";
-import { toolRegistry } from "./config.js";
-import { createRequestLogger } from "../utils/logger.js";
+import { toolRegistry } from "../config.js";
+import { createRequestLogger } from "../../utils/logger.js";
 
 toolRegistry["create_search"] = {
   name: "create_search",

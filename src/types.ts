@@ -154,3 +154,58 @@ export interface SearchArgs {
   numResults?: number;
   livecrawl?: 'always' | 'fallback';
 }
+
+// Webhook Types
+export interface ExaWebhook {
+  id: string;
+  object: "webhook";
+  status: "active" | "inactive";
+  events: string[];
+  url: string;
+  secret: string | null;
+  metadata: Record<string, string> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExaWebhookListResponse {
+  data: ExaWebhook[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export interface ExaWebhookAttempt {
+  id: string;
+  object: "webhook_attempt";
+  eventId: string;
+  eventType: string;
+  webhookId: string;
+  url: string;
+  successful: boolean;
+  responseHeaders: Record<string, string>;
+  responseBody: string | null;
+  responseStatusCode: number;
+  attempt: number;
+  attemptedAt: string;
+}
+
+export interface ExaWebhookAttemptListResponse {
+  data: ExaWebhookAttempt[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+// Event Types
+export interface ExaBaseEvent {
+  id: string;
+  object: "event";
+  type: string;
+  data: Record<string, any>;
+  createdAt: string;
+}
+
+export interface ExaEventListResponse {
+  data: ExaBaseEvent[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
