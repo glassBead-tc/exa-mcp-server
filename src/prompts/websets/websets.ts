@@ -1,5 +1,4 @@
 import { promptRegistry } from "../registry.js";
-import { z } from "zod";
 
 // Prompt for create_webset tool
 promptRegistry["create-webset"] = {

@@ -3,7 +3,7 @@ import { promptRegistry } from "../registry.js";
 // Prompt for list_events tool
 promptRegistry["list-events"] = {
   name: "list-events",
-  description: "List Events for a Webset with filtering options",
+  description: "Stream events that have occurred in the Exa Websets system",
   arguments: [
     {
       name: "apiKey",
@@ -11,45 +11,45 @@ promptRegistry["list-events"] = {
       required: true
     },
     {
-      name: "webset",
-      description: "The Webset ID",
-      required: true
+      name: "cursor",
+      description: "Cursor for pagination",
+      required: false
     },
     {
       name: "limit",
-      description: "Maximum number of Events to return",
+      description: "Maximum total number of events to return",
       required: false
     },
     {
-      name: "cursor",
-      description: "Pagination cursor for retrieving additional results",
+      name: "types",
+      description: "Event types to filter by",
       required: false
     },
     {
-      name: "filters",
-      description: "Filtering criteria for the Events",
+      name: "streamFormat",
+      description: "Format for streaming: 'jsonl' (default) for line-delimited JSON or 'json' for a complete JSON array",
       required: false
     },
     {
-      name: "stream",
-      description: "Enable streaming of results (true/false)",
+      name: "batchSize",
+      description: "Number of events to process in each batch (1-100, default: 25)",
       required: false
     }
   ],
   enabled: true,
   getMessages: (args) => {
-    const { apiKey, webset, limit, cursor, filters, stream } = args || {};
+    const { apiKey, cursor, limit, types, streamFormat, batchSize } = args || {};
     
     // Build the arguments object with only provided parameters
     let argumentsObj: any = {
-      apiKey,
-      webset
+      apiKey
     };
     
-    if (limit) argumentsObj.limit = limit;
     if (cursor) argumentsObj.cursor = cursor;
-    if (filters) argumentsObj.filters = filters;
-    if (stream !== undefined) argumentsObj.stream = stream;
+    if (limit) argumentsObj.limit = limit;
+    if (types) argumentsObj.types = types;
+    if (streamFormat) argumentsObj.streamFormat = streamFormat;
+    if (batchSize) argumentsObj.batchSize = batchSize;
     
     return [
       {
@@ -65,7 +65,7 @@ promptRegistry["list-events"] = {
 }
 \`\`\`
 
-This will retrieve a list of Events from the specified Webset, with optional filtering${stream ? ' and will stream results as they become available' : ''}.`
+This will stream events that have occurred in the Exa Websets system, with optional filtering by event types and pagination.`
         }
       }
     ];
@@ -75,7 +75,7 @@ This will retrieve a list of Events from the specified Webset, with optional fil
 // Prompt for get_event tool
 promptRegistry["get-event"] = {
   name: "get-event",
-  description: "Retrieve a specific Event from a Webset by ID",
+  description: "Get a single event by ID from Exa Websets",
   arguments: [
     {
       name: "apiKey",
@@ -83,19 +83,14 @@ promptRegistry["get-event"] = {
       required: true
     },
     {
-      name: "webset",
-      description: "The Webset ID",
-      required: true
-    },
-    {
       name: "id",
-      description: "The Event ID to retrieve",
+      description: "The ID of the event to retrieve",
       required: true
     }
   ],
   enabled: true,
   getMessages: (args) => {
-    const { apiKey, webset, id } = args || {};
+    const { apiKey, id } = args || {};
     
     return [
       {
@@ -109,13 +104,12 @@ promptRegistry["get-event"] = {
   "name": "get_event",
   "arguments": {
     "apiKey": "${apiKey}",
-    "webset": "${webset}",
     "id": "${id}"
   }
 }
 \`\`\`
 
-This will retrieve details about the specified Event from the Webset.`
+This will retrieve details about the specified event by ID.`
         }
       }
     ];
