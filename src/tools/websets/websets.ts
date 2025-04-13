@@ -542,13 +542,7 @@ toolRegistry["delete_webset"] = {
 
       logger.log("Sending DELETE request to Exa Websets API");
 
-      interface DeleteWebsetResponse {
-        id: string;
-        object: "webset.deleted";
-        deleted: boolean;
-      }
-
-      const response = await axiosInstance.delete<DeleteWebsetResponse>(`/websets/v0/websets/${encodeURIComponent(id)}`);
+      const response = await axiosInstance.delete<ExaWebsetsResponse>(`/websets/v0/websets/${encodeURIComponent(id)}`);
 
       logger.log("Received response from Exa Websets API");
 

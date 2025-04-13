@@ -5,7 +5,7 @@ import { z } from "zod";
 import axios from "axios";
 import { toolRegistry, API_CONFIG } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
-import type { ExaWebhook, ExaWebhookListResponse, ExaWebhookAttemptListResponse } from "../../types.js";
+import type { ExaWebhook, ExaWebhookListResponse, ExaWebhookAttemptListResponse, ExaWebsetsResponse } from "../../types.js";
 
 // Allowed events for Exa Websets webhooks (should be kept in sync with Exa docs)
 export const ALLOWED_EVENTS = [
@@ -104,7 +104,7 @@ toolRegistry["create_webhook"] = {
 
       logger.log("Sending POST request to Exa Websets API");
 
-      const response = await axiosInstance.post(
+      const response = await axiosInstance.post<ExaWebhook>(
         API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS,
         payload
       );
@@ -211,7 +211,7 @@ toolRegistry["get_webhook"] = {
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get(
+      const response = await axiosInstance.get<ExaWebhook>(
         `${API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS}/${id}`
       );
 
@@ -341,7 +341,7 @@ toolRegistry["update_webhook"] = {
 
       logger.log("Sending PATCH request to Exa Websets API");
 
-      const response = await axiosInstance.patch(
+      const response = await axiosInstance.patch<ExaWebhook>(
         `${API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS}/${id}`,
         payload
       );
@@ -448,7 +448,7 @@ toolRegistry["delete_webhook"] = {
 
       logger.log("Sending DELETE request to Exa Websets API");
 
-      const response = await axiosInstance.delete(
+      const response = await axiosInstance.delete<ExaWebhook>(
         `${API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS}/${id}`
       );
 
@@ -562,7 +562,7 @@ toolRegistry["list_webhooks"] = {
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get(API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS, {
+      const response = await axiosInstance.get<ExaWebhookListResponse>(API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS, {
         params
       });
 
@@ -684,7 +684,7 @@ toolRegistry["list_webhook_attempts"] = {
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get(`${API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS}/${id}/attempts`, {
+      const response = await axiosInstance.get<ExaWebhookAttemptListResponse>(`${API_CONFIG.ENDPOINTS.WEBSETS.WEBHOOKS}/${id}/attempts`, {
         params
       });
 
