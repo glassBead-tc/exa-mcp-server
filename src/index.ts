@@ -237,6 +237,33 @@ class ExaServer {
           }));
           return;
         }
+        // Handle Exa Webhook POST requests
+        else if (req.method === 'POST' && req.url === '/webhooks/exa') {
+          // Acknowledge receipt immediately as per webhook best practices
+          res.writeHead(200).end();
+
+          let body = '';
+          req.on('data', chunk => {
+            body += chunk.toString(); // Convert Buffer to string
+          });
+          req.on('end', () => {
+            try {
+              // Log the received body for now
+              // TODO: Implement actual processing logic for the webhook payload
+              log(`Received Exa webhook notification: ${body}`);
+              // Optionally parse if known to be JSON, but log raw for now
+              // const parsedBody = JSON.parse(body);
+              // log(`Parsed Exa webhook notification: ${JSON.stringify(parsedBody, null, 2)}`);
+            } catch (error) {
+              log(`Error processing Exa webhook body: ${error instanceof Error ? error.message : String(error)}`);
+              log(`Raw body received: ${body}`); // Log raw body on error
+            }
+          });
+          req.on('error', (error) => {
+            log(`Error reading Exa webhook request stream: ${error.message}`);
+          });
+          return; // Return after setting up listeners and sending initial response
+        }
         
         res.writeHead(404).end('Not Found');
       }
