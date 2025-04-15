@@ -16,6 +16,7 @@ import { log } from "./utils/logger.js";
 
 // Import our custom transports
 import { StreamableHTTPServerTransport } from './transports/index.js';
+import { websetJobManager } from './middleware/websetJobManager.js'; // Import the job manager
 
 // Export our custom transports
 export * from './transports/index.js';
@@ -248,15 +249,31 @@ class ExaServer {
           });
           req.on('end', () => {
             try {
-              // Log the received body for now
-              // TODO: Implement actual processing logic for the webhook payload
-              log(`Received Exa webhook notification: ${body}`);
-              // Optionally parse if known to be JSON, but log raw for now
-              // const parsedBody = JSON.parse(body);
-              // log(`Parsed Exa webhook notification: ${JSON.stringify(parsedBody, null, 2)}`);
+              // Attempt to parse the JSON body
+              const payload = JSON.parse(body);
+              log(`Received Exa webhook payload: ${JSON.stringify(payload, null, 2)}`); // Use JSON.stringify
+
+              // Extract and log key information (adjust keys based on actual Exa payload structure)
+              const eventType = payload.type || payload.event; // Example keys
+              const websetId = payload.data?.id || payload.websetId; // Example keys
+              const status = payload.data?.status || payload.status; // Example keys
+
+              log(`Webhook Event Type: ${eventType || 'N/A'}`);
+              log(`Webset ID: ${websetId || 'N/A'}`);
+              log(`Status: ${status || 'N/A'}`);
+
+              // Call the WebsetJobManager to handle the update
+              log(`Calling websetJobManager.handleWebhookUpdate for websetId: ${websetId}`);
+              websetJobManager.handleWebhookUpdate(payload)
+                .then(() => {
+                  log(`Successfully processed webhook update for websetId: ${websetId}`);
+                })
+                .catch(managerError => {
+                  log(`Error processing webhook update in WebsetJobManager for websetId ${websetId}: ${managerError instanceof Error ? managerError.message : String(managerError)}`);
+                });
             } catch (error) {
-              log(`Error processing Exa webhook body: ${error instanceof Error ? error.message : String(error)}`);
-              log(`Raw body received: ${body}`); // Log raw body on error
+              log(`Error parsing Exa webhook body: ${error instanceof Error ? error.message : String(error)}`);
+              log(`Raw body received: ${body}`);
             }
           });
           req.on('error', (error) => {

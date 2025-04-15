@@ -234,6 +234,87 @@ class WebsetJobManager {
     }
   }
 
+
+    /**
+     * Handles incoming webhook updates from Exa.
+     * Updates the status of the corresponding job if found.
+     */
+    async handleWebhookUpdate(payload: any): Promise<void> {
+      logger.log(`Received webhook payload: ${JSON.stringify(payload)}`);
+
+      // Basic payload validation (adjust based on actual Exa webhook structure)
+      if (!payload || typeof payload !== 'object' || !payload.type || !payload.data || !payload.data.id) {
+        logger.log('Received invalid or incomplete webhook payload.');
+        return;
+      }
+
+      const eventType: string = payload.type;
+      const websetId: string = payload.data.id;
+      const eventData: ExaWebsetsResponse = payload.data; // Assuming payload.data matches ExaWebsetsResponse structure
+
+      logger.log(`Processing webhook event: ${eventType} for websetId: ${websetId}`);
+
+      let jobFound = false;
+      for (const [jobId, job] of this.jobs.entries()) {
+        if (job.websetId === websetId) {
+          jobFound = true;
+          logger.log(`Found matching job ${jobId} for websetId ${websetId}`);
+
+          // Avoid processing if job is already in a terminal state
+          if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED) {
+            logger.log(`Job ${jobId} is already in terminal state (${job.status}). Ignoring webhook update.`);
+            return; // Exit the loop and function
+          }
+
+          let newStatus: JobStatus = job.status;
+          let results: any = job.results;
+          let error: string | null = job.error;
+          const now = new Date();
+
+          // Determine status based on event type and data
+          // Assuming 'search' completion/cancellation is the primary indicator for now
+          const searchStatus = eventData.searches && eventData.searches.length > 0 ? eventData.searches[0].status : null;
+
+          if (eventType === 'webset.search.completed' || searchStatus === 'completed') {
+            newStatus = JobStatus.COMPLETED;
+            results = eventData; // Store the full event data
+            error = null;
+            logger.log(`Job ${jobId}: Webhook updated status to COMPLETED`);
+          } else if (eventType === 'webset.search.canceled' || searchStatus === 'canceled') {
+            newStatus = JobStatus.FAILED;
+            error = `Webset processing failed or was canceled via webhook (Reason: ${eventData.searches[0]?.canceledReason || 'Unknown'})`;
+            results = eventData; // Store event data even on failure
+            logger.log(`Job ${jobId}: Webhook updated status to FAILED (Canceled/Failed)`);
+          } else {
+            // Handle other relevant event types if necessary
+            // For now, just log if it's not a completion/failure event we explicitly handle
+            logger.log(`Job ${jobId}: Received unhandled relevant event type '${eventType}'. Status remains ${job.status}.`);
+            // Optionally update results with the latest data even if status doesn't change
+            results = eventData;
+          }
+
+          // Update the job only if the status changed or results/error were updated
+          if (newStatus !== job.status || results !== job.results || error !== job.error) {
+            const updatedJobData: JobData = {
+              ...job,
+              status: newStatus,
+              results: results,
+              error: error,
+              updatedAt: now,
+            };
+            this.jobs.set(jobId, updatedJobData);
+            logger.log(`Job ${jobId}: Updated via webhook (Status: ${newStatus})`);
+          }
+
+          return; // Found and processed the job, no need to check further
+        }
+      }
+
+      if (!jobFound) {
+        logger.log(`No active job found for websetId ${websetId} from webhook event ${eventType}.`);
+      }
+    }
+
   // Optional: Method to clean up old jobs if needed
   // cleanupJobs(maxAgeMinutes: number) { ... }
 }
