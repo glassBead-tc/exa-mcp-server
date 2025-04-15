@@ -2,37 +2,158 @@ import { z } from "zod";
 import axios from "axios";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ExaWebsetsRequest, ExaWebsetsResponse } from "../../types.js";
 
-// Define the types for the handler parameters
-interface CreateWebsetArgs {
-  apiKey: string;
-  search: Record<string, unknown>;
-  enrichments?: Array<Record<string, unknown>>;
-  externalId?: string;
-  metadata?: Record<string, unknown>;
-  pollInterval?: number;
-}
+toolRegistry["get_webset_status"] = {
+  name: "get_webset_status",
+  description: "Check the status of a Webset creation process and retrieve results when complete. Use this after creating a webset with the create_webset tool.",
+  schema: {
+    apiKey: z.string().describe("Your Exa API key"),
+    websetId: z.string().describe("The Webset ID to check status for"),
+    expand: z.string().optional().describe("Optional expand parameter, e.g., 'items' to include full results"),
+    includeDetails: z.boolean().optional().describe("Whether to include detailed results. Default: true")
+  },
+  handler: async ({ apiKey, websetId, expand, includeDetails = true }) => {
+    const requestId = `get_webset_status-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logger = createRequestLogger(requestId, 'get_webset_status');
 
-interface RequestParams {
-  _meta?: {
-    progressToken?: string | number;
-  };
-}
+    logger.start("Checking Webset status");
+
+    try {
+      const axiosInstance = axios.create({
+        baseURL: "https://api.exa.ai",
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+          'x-api-key': apiKey
+        },
+        timeout: 30000
+      });
+
+      // Build the URL with optional expand parameter
+      let url = `/websets/v0/websets/${encodeURIComponent(websetId)}`;
+      if (expand) {
+        url += `?expand=${encodeURIComponent(expand)}`;
+      }
+
+      logger.log("Getting Webset status");
+      const response = await axiosInstance.get<ExaWebsetsResponse>(url);
+
+      // Calculate progress and determine if complete
+      const websetData = response.data;
+      const searchProgress = websetData.searches.length > 0 ?
+        websetData.searches[0].progress.completion : 0;
+      const searchStatus = websetData.searches.length > 0 ?
+        websetData.searches[0].status : 'not_started';
+      const isComplete = searchStatus === 'completed';
+      const isCanceled = searchStatus === 'canceled';
+      const progressPercent = Math.round(searchProgress * 100);
+
+      // Prepare a user-friendly response
+      let statusMessage = "";
+      let nextSteps = [];
+
+      if (isComplete) {
+        statusMessage = "Webset creation completed successfully!";
+        nextSteps = [
+          "You can now use this webset for searches and other operations.",
+          "To see the full results including items, use: get_webset_status(apiKey: 'your-api-key', websetId: '" + websetId + "', expand: 'items')",
+          "To search within this webset, use the create_search tool."
+        ];
+      } else if (isCanceled) {
+        statusMessage = "Webset creation was canceled.";
+        nextSteps = [
+          "You may want to create a new webset with the create_webset tool."
+        ];
+      } else {
+        statusMessage = `Webset creation is in progress (${progressPercent}% complete).`;
+        nextSteps = [
+          "The process typically takes 10-15 minutes to complete.",
+          "Check back later using this same tool to see when it's complete."
+        ];
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            websetId: websetData.id,
+            status: websetData.status,
+            searchStatus,
+            progressPercent,
+            isComplete,
+            isCanceled,
+            message: statusMessage,
+            nextSteps,
+            ...(includeDetails && { details: websetData })
+          }, null, 2)
+        }],
+        isError: isCanceled
+      };
+    } catch (error) {
+      logger.error(error);
+
+      if (axios.isAxiosError(error)) {
+        const statusCode = error.response?.status || 'unknown';
+        const errorMessage = error.response?.data?.message || error.message;
+
+        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
+        return {
+          content: [{
+            type: "text",
+            text: `Get Webset Status error (${statusCode}): ${errorMessage}`
+          }],
+          isError: true
+        };
+      }
+
+      return {
+        content: [{
+          type: "text",
+          text: `Get Webset Status error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
 
 toolRegistry["create_webset"] = {
   name: "create_webset",
-  description: "Create a Webset using Exa's Websets API. Provide a search object and optional enrichments, externalId, and metadata. This operation may take a long time to complete, and progress updates will be provided.",
+  description: "Create a Webset using Exa's Websets API. This tool initiates the webset creation process and returns immediately with a tracking ID. Webset creation typically takes 10-15 minutes to complete in the background.",
   schema: {
     apiKey: z.string().describe("Your Exa API key"),
-    search: z.object({}).passthrough().describe("Search object for the Webset"),
-    enrichments: z.array(z.object({}).passthrough()).optional().describe("Array of enrichment objects"),
+    search: z.object({
+      query: z.string().describe("Your search query. Required string describing what to look for."),
+      count: z.number().min(1).optional().describe("Number of items to find. Default: 10"),
+      entity: z.object({
+        type: z.enum(["company"]).optional().describe("Entity type. Currently only 'company' is supported")
+      }).optional().describe("Entity the Webset will return results for"),
+      criteria: z.array(
+        z.object({
+          description: z.string().describe("Description of the criterion")
+        })
+      ).optional().describe("Criteria for evaluating results")
+    }).describe("Search parameters for the Webset"),
+    enrichments: z.array(
+      z.object({
+        description: z.string().describe("Description of the enrichment task"),
+        format: z.enum(["text", "date", "number", "options", "email", "phone"]).optional()
+          .describe("Format of the enrichment response"),
+        options: z.array(
+          z.object({
+            label: z.string().describe("Label for the option")
+          })
+        ).optional().describe("Options for the enrichment"),
+        metadata: z.record(z.string().max(1000)).optional().describe("Metadata for the enrichment")
+      })
+    ).optional().describe("Array of enrichment objects"),
     externalId: z.string().optional().describe("External identifier for the Webset"),
-    metadata: z.object({}).passthrough().optional().describe("Metadata key-value pairs"),
-    pollInterval: z.number().min(1000).max(60000).optional().describe("Polling interval in milliseconds (1000-60000). Default: 5000")
+    metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs")
   },
   handler: async (args, extra) => {
-    const { apiKey, search, enrichments, externalId, metadata, pollInterval } = args;
+    const { apiKey, search, enrichments, externalId, metadata } = args;
     const requestId = `create_webset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logger = createRequestLogger(requestId, 'create_webset');
 
@@ -40,9 +161,6 @@ toolRegistry["create_webset"] = {
     const progressToken = extra?.params?._meta?.progressToken;
     const shouldReportProgress = !!progressToken;
     const server = extra?.server;
-    
-    // Set default polling interval if not provided
-    const interval = pollInterval || 5000;
 
     logger.start("Creating Webset");
 
@@ -57,10 +175,13 @@ toolRegistry["create_webset"] = {
         timeout: 30000
       });
 
-      const payload: Record<string, any> = { search };
-      if (enrichments) payload.enrichments = enrichments;
-      if (externalId) payload.externalId = externalId;
-      if (metadata) payload.metadata = metadata;
+      // Create the payload using the ExaWebsetsRequest type
+      const payload: ExaWebsetsRequest = {
+        search,
+        ...(enrichments && { enrichments }),
+        ...(externalId && { externalId }),
+        ...(metadata && { metadata })
+      };
 
       logger.log("Sending request to Exa Websets API");
 
@@ -74,109 +195,42 @@ toolRegistry["create_webset"] = {
       }
 
       // Create the Webset
-      const response = await axiosInstance.post("/websets/v0/websets", payload);
-      
-      logger.log("Received initial response from Exa Websets API");
-      
-      // Send progress update after initial creation
-      if (shouldReportProgress && server && progressToken) {
-        server.notification("notifications/progress", {
-          progressToken,
-          progress: 10,
-          message: "Webset creation started, waiting for processing..."
-        });
-      }
+      const response = await axiosInstance.post<ExaWebsetsResponse>("/websets/v0/websets", payload);
 
-      // Extract the webset ID from the response
-      const websetId = response.data.id;
-      
-      // If the status is already 'completed', return the result
-      if (response.data.status === 'completed') {
-        if (shouldReportProgress && server && progressToken) {
-          server.notification("notifications/progress", {
-            progressToken,
-            progress: 100,
-            total: 100,
-            message: "Webset creation completed"
-          });
-        }
-        
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(response.data, null, 2)
-          }]
-        };
-      }
-      
-      // Poll for status until completion or error
-      let websetData = response.data;
-      let attempts = 0;
-      const maxAttempts = 60; // Limit polling to prevent infinite loops
-      
-      while (websetData.status !== 'completed' && websetData.status !== 'failed' && attempts < maxAttempts) {
-        // Wait for the specified interval
-        await new Promise(resolve => setTimeout(resolve, interval));
-        
-        attempts++;
-        
-        // Calculate progress based on attempts (this is an estimate)
-        const progressPercent = Math.min(10 + Math.floor((attempts / maxAttempts) * 80), 90);
-        
-        if (shouldReportProgress && server && progressToken) {
-          server.notification("notifications/progress", {
-            progressToken,
-            progress: progressPercent,
-            total: 100,
-            message: `Polling Webset status (${websetData.status})...`
-          });
-        }
-        
-        // Fetch the current status
-        try {
-          logger.log(`Polling Webset status (attempt ${attempts})`);
-          const statusResponse = await axiosInstance.get(`/websets/v0/websets/${encodeURIComponent(websetId)}`);
-          websetData = statusResponse.data;
-          
-          // If the Webset has specific progress indicators, we could use those here
-          if (websetData.progress) {
-            const actualProgress = Math.floor(10 + (websetData.progress * 90));
-            
-            if (shouldReportProgress && server && progressToken) {
-              server.notification("notifications/progress", {
-                progressToken,
-                progress: actualProgress,
-                total: 100,
-                message: `Webset processing: ${websetData.status}`
-              });
-            }
-          }
-        } catch (error) {
-          logger.error(`Error polling webset status: ${error}`);
-          // Continue polling despite errors
-        }
-      }
-      
-      // Final progress update
+      logger.log("Received response from Exa Websets API");
+
+      // Send progress update after creation
       if (shouldReportProgress && server && progressToken) {
         server.notification("notifications/progress", {
           progressToken,
           progress: 100,
           total: 100,
-          message: websetData.status === 'completed' ? 
-            "Webset creation completed" : 
-            `Webset creation ${websetData.status === 'failed' ? 'failed' : 'timed out'}`
+          message: "Webset creation initiated successfully"
         });
       }
-      
-      logger.log(`Webset creation ${websetData.status}`);
-      
+
+      // Extract the webset ID and initial status from the response
+      const websetId = response.data.id;
+      const status = response.data.status;
+      const searchStatus = response.data.searches.length > 0 ? response.data.searches[0].status : 'not_started';
+
+      // Format a user-friendly response with clear instructions
       return {
         content: [{
           type: "text",
-          text: JSON.stringify(websetData, null, 2)
-        }],
-        isError: websetData.status === 'failed'
+          text: JSON.stringify({
+            websetId,
+            status,
+            searchStatus,
+            message: "Webset creation has been initiated successfully. The process typically takes 10-15 minutes to complete in the background.",
+            nextSteps: [
+              "1. Your webset is now being created in the background.",
+              "2. To check the status of your webset, use the get_webset_status tool with your websetId.",
+              "3. Example: get_webset_status(apiKey: 'your-api-key', websetId: '" + websetId + "')",
+              "4. When the status shows 'completed', you can retrieve the full results with expand='items'."
+            ]
+          }, null, 2)
+        }]
       };
     } catch (error) {
       logger.error(error);
@@ -219,7 +273,7 @@ toolRegistry["create_webset"] = {
 
 toolRegistry["get_webset"] = {
   name: "get_webset",
-  description: "Retrieve a Webset by ID from Exa's Websets API. Optionally expand with items.",
+  description: "[DEPRECATED] Retrieve a Webset by ID from Exa's Websets API. For Websets created with create_webset, use get_webset_status instead.",
   schema: {
     apiKey: z.string().describe("Your Exa API key"),
     id: z.string().describe("The Webset ID to retrieve"),
@@ -246,7 +300,7 @@ toolRegistry["get_webset"] = {
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get(`/websets/v0/websets/${encodeURIComponent(id)}`, { params });
+      const response = await axiosInstance.get<ExaWebsetsResponse>(`/websets/v0/websets/${encodeURIComponent(id)}`, { params });
 
       logger.log("Received response from Exa Websets API");
 
@@ -291,7 +345,7 @@ toolRegistry["update_webset"] = {
   schema: {
     apiKey: z.string().describe("Your Exa API key"),
     id: z.string().describe("The Webset ID to update"),
-    metadata: z.object({}).passthrough().optional().describe("Metadata key-value pairs to update")
+    metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs to update")
   },
   handler: async ({ apiKey, id, metadata }) => {
     const requestId = `update_webset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -310,12 +364,14 @@ toolRegistry["update_webset"] = {
         timeout: 30000
       });
 
-      const payload: Record<string, any> = {};
-      if (metadata) payload.metadata = metadata;
+      // Use a typed payload
+      const payload = {
+        metadata: metadata || {}
+      };
 
       logger.log("Sending POST request to Exa Websets API");
 
-      const response = await axiosInstance.post(`/websets/v0/websets/${encodeURIComponent(id)}`, payload);
+      const response = await axiosInstance.post<ExaWebsetsResponse>(`/websets/v0/websets/${encodeURIComponent(id)}`, payload);
 
       logger.log("Received response from Exa Websets API");
 
@@ -378,13 +434,21 @@ toolRegistry["list_websets"] = {
         timeout: 30000
       });
 
-      const params: Record<string, any> = {};
+      // Create typed params object
+      const params: Record<string, string | number> = {};
       if (cursor) params.cursor = cursor;
       if (limit) params.limit = limit;
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get("/websets/v0/websets", { params });
+      // Use typed response
+      interface WebsetsListResponse {
+        data: ExaWebsetsResponse[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      }
+
+      const response = await axiosInstance.get<WebsetsListResponse>("/websets/v0/websets", { params });
 
       logger.log("Received response from Exa Websets API");
 
@@ -448,7 +512,7 @@ toolRegistry["cancel_webset"] = {
 
       logger.log("Sending POST request to Exa Websets API");
 
-      const response = await axiosInstance.post(`/websets/v0/websets/${encodeURIComponent(id)}/cancel`);
+      const response = await axiosInstance.post<ExaWebsetsResponse>(`/websets/v0/websets/${encodeURIComponent(id)}/cancel`);
 
       logger.log("Received response from Exa Websets API");
 
@@ -512,7 +576,7 @@ toolRegistry["delete_webset"] = {
 
       logger.log("Sending DELETE request to Exa Websets API");
 
-      const response = await axiosInstance.delete(`/websets/v0/websets/${encodeURIComponent(id)}`);
+      const response = await axiosInstance.delete<ExaWebsetsResponse>(`/websets/v0/websets/${encodeURIComponent(id)}`);
 
       logger.log("Received response from Exa Websets API");
 
@@ -543,6 +607,139 @@ toolRegistry["delete_webset"] = {
         content: [{
           type: "text",
           text: `Delete Webset error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
+
+
+
+// --- New Async Webset Tools ---
+
+import { websetJobManager } from '../../middleware/websetJobManager.js'; // Import the job manager
+import { ExaCreateWebsetParams, JobStatus } from '../../types.js'; // Import the specific type if needed
+
+toolRegistry["create_webset_async"] = {
+  name: "create_webset_async",
+  description: "Initiates an asynchronous Webset creation job. Returns a jobId to track the process.",
+  // Schema is similar to create_webset, but handler returns jobId
+  schema: {
+    apiKey: z.string().describe("Your Exa API key"),
+    search: z.object({
+      query: z.string().describe("Your search query. Required string describing what to look for."),
+      count: z.number().min(1).optional().describe("Number of items to find. Default: 10"),
+      entity: z.object({
+        type: z.enum(["company"]).optional().describe("Entity type. Currently only 'company' is supported")
+      }).optional().describe("Entity the Webset will return results for"),
+      criteria: z.array(
+        z.object({
+          description: z.string().describe("Description of the criterion")
+        })
+      ).optional().describe("Criteria for evaluating results")
+    }).describe("Search parameters for the Webset"),
+    enrichments: z.array(
+      z.object({
+        description: z.string().describe("Description of the enrichment task"),
+        format: z.enum(["text", "date", "number", "options", "email", "phone"]).optional()
+          .describe("Format of the enrichment response"),
+        options: z.array(
+          z.object({
+            label: z.string().describe("Label for the option")
+          })
+        ).optional().describe("Options for the enrichment"),
+        metadata: z.record(z.string().max(1000)).optional().describe("Metadata for the enrichment")
+      })
+    ).optional().describe("Array of enrichment objects"),
+    externalId: z.string().optional().describe("External identifier for the Webset"),
+    metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs")
+  },
+  handler: async (args) => {
+    const requestId = `create_webset_async-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logger = createRequestLogger(requestId, 'create_webset_async');
+    logger.start("Initiating async Webset creation");
+
+    try {
+      // Type assertion to match ExaCreateWebsetParams expected by the manager
+      const params = args as ExaCreateWebsetParams;
+      const jobId = await websetJobManager.startWebsetJob(params);
+
+      logger.log(`Async job started with ID: ${jobId}`);
+      logger.complete();
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ jobId: jobId }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logger.error(error);
+      return {
+        content: [{
+          type: "text",
+          text: `Create Webset Async error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
+
+toolRegistry["get_webset_job_status"] = {
+  name: "get_webset_job_status",
+  description: "Retrieves the status and results of an asynchronous Webset creation job.",
+  schema: {
+    jobId: z.string().describe("The ID of the job to check status for"),
+    apiKey: z.string().describe("Your Exa API key (required for fetching updates from Exa)"),
+  },
+  handler: async ({ jobId, apiKey }) => {
+    const requestId = `get_webset_job_status-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logger = createRequestLogger(requestId, 'get_webset_job_status');
+    logger.start(`Checking status for job ID: ${jobId}`);
+
+    try {
+      const jobStatusData = await websetJobManager.getJobStatus(jobId, apiKey);
+
+      logger.log(`Job status retrieved: ${jobStatusData.status}`);
+      logger.complete();
+
+      // Format the response clearly
+      let message = `Job ${jobId} status: ${jobStatusData.status}.`;
+      if (jobStatusData.status === JobStatus.COMPLETED) {
+        message += " Webset creation completed successfully.";
+      } else if (jobStatusData.status === JobStatus.FAILED) {
+        message += ` Job failed: ${jobStatusData.error}`;
+      } else if (jobStatusData.status === JobStatus.RUNNING) {
+        const progressPercent = Math.round((jobStatusData.results?.searches?.[0]?.progress?.completion || 0) * 100);
+        message += ` Webset creation is in progress (${progressPercent}% complete). Check back later.`;
+      } else if (jobStatusData.status === JobStatus.PENDING) {
+         message += ` Job is pending initiation. Check back shortly.`;
+      }
+
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            jobId: jobId,
+            status: jobStatusData.status,
+            message: message,
+            results: jobStatusData.status === JobStatus.COMPLETED ? jobStatusData.results : null, // Only include full results on completion
+            error: jobStatusData.error,
+          }, null, 2)
+        }],
+        isError: jobStatusData.status === JobStatus.FAILED
+      };
+    } catch (error) {
+      logger.error(error);
+      return {
+        content: [{
+          type: "text",
+          text: `Get Webset Job Status error: ${error instanceof Error ? error.message : String(error)}`
         }],
         isError: true
       };

@@ -2,6 +2,10 @@ import { z } from "zod";
 import axios from "axios";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
+import { ExaWebsetsResponse } from "../../types.js";
+
+// Extract the search type from ExaWebsetsResponse
+type WebsetSearchResponse = ExaWebsetsResponse["searches"][0];
 
 toolRegistry["create_search"] = {
   name: "create_search",
@@ -11,10 +15,16 @@ toolRegistry["create_search"] = {
     webset: z.string().describe("The Webset ID"),
     count: z.number().min(1).describe("Number of results to attempt to find"),
     query: z.string().min(1).max(5000).describe("Search query"),
-    entity: z.object({}).passthrough().describe("Entity object"),
-    criteria: z.array(z.object({}).passthrough()).optional().describe("Array of criteria objects"),
-    behaviour: z.string().optional().describe("Search behaviour, e.g., 'override'"),
-    metadata: z.object({}).passthrough().optional().describe("Metadata key-value pairs")
+    entity: z.object({
+      type: z.enum(["company"]).optional().describe("Entity type. Currently only 'company' is supported")
+    }).describe("Entity object"),
+    criteria: z.array(
+      z.object({
+        description: z.string().describe("Description of the criterion")
+      })
+    ).optional().describe("Array of criteria objects"),
+    behaviour: z.enum(["override"]).optional().describe("Search behaviour, defaults to 'override'"),
+    metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs")
   },
   handler: async ({ apiKey, webset, count, query, entity, criteria, behaviour, metadata }) => {
     const requestId = `create_search-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -33,18 +43,19 @@ toolRegistry["create_search"] = {
         timeout: 30000
       });
 
-      const payload: Record<string, any> = {
+      // Create typed payload
+      const payload = {
         count,
         query,
-        entity
+        entity,
+        ...(criteria && { criteria }),
+        ...(behaviour && { behaviour }),
+        ...(metadata && { metadata })
       };
-      if (criteria) payload.criteria = criteria;
-      if (behaviour) payload.behaviour = behaviour;
-      if (metadata) payload.metadata = metadata;
 
       logger.log("Sending POST request to Exa Websets API");
 
-      const response = await axiosInstance.post(`/websets/v0/websets/${encodeURIComponent(webset)}/searches`, payload);
+      const response = await axiosInstance.post<WebsetSearchResponse>(`/websets/v0/websets/${encodeURIComponent(webset)}/searches`, payload);
 
       logger.log("Received response from Exa Websets API");
 
@@ -109,7 +120,7 @@ toolRegistry["get_search"] = {
 
       logger.log("Sending GET request to Exa Websets API");
 
-      const response = await axiosInstance.get(`/websets/v0/websets/${encodeURIComponent(webset)}/searches/${encodeURIComponent(id)}`);
+      const response = await axiosInstance.get<WebsetSearchResponse>(`/websets/v0/websets/${encodeURIComponent(webset)}/searches/${encodeURIComponent(id)}`);
 
       logger.log("Received response from Exa Websets API");
 
@@ -174,7 +185,7 @@ toolRegistry["cancel_search"] = {
 
       logger.log("Sending POST request to Exa Websets API");
 
-      const response = await axiosInstance.post(`/websets/v0/websets/${encodeURIComponent(webset)}/searches/${encodeURIComponent(id)}/cancel`);
+      const response = await axiosInstance.post<WebsetSearchResponse>(`/websets/v0/websets/${encodeURIComponent(webset)}/searches/${encodeURIComponent(id)}/cancel`);
 
       logger.log("Received response from Exa Websets API");
 

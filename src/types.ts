@@ -209,3 +209,59 @@ export interface ExaEventListResponse {
   hasMore: boolean;
   nextCursor: string | null;
 }
+
+// Async Job Management Types
+export enum JobStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
+
+export interface JobData {
+  jobId: string;
+  websetId: string | null; // Exa's websetId
+  status: JobStatus;
+  results: any | null; // Store results from get_webset_status
+  error: any | null; // Store any errors encountered
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Define the input parameters for the actual Exa API calls
+// Re-defining based on provided schema for clarity within the job manager context.
+export interface ExaCreateWebsetParams {
+  apiKey: string;
+  search: {
+    query: string;
+    count?: number;
+    entity?: {
+      type: 'company';
+    };
+    criteria?: Array<{ description: string }>;
+  };
+  enrichments?: Array<{
+    description: string;
+    format?: 'text' | 'date' | 'number' | 'options' | 'email' | 'phone';
+    options?: Array<{ label: string }>;
+    metadata?: Record<string, string>;
+  }>;
+  externalId?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface ExaGetWebsetStatusParams {
+  apiKey: string;
+  websetId: string;
+  expand?: string;
+  includeDetails?: boolean;
+}
+
+
+// Define the structure for stored research findings
+export interface ResearchFinding {
+  finding: any;
+  source: string;
+  jobId?: string;
+  timestamp: string;
+}
