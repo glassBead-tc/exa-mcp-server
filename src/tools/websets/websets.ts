@@ -615,3 +615,136 @@ toolRegistry["delete_webset"] = {
   enabled: true
 };
 
+
+
+// --- New Async Webset Tools ---
+
+import { websetJobManager } from '../../middleware/websetJobManager.js'; // Import the job manager
+import { ExaCreateWebsetParams, JobStatus } from '../../types.js'; // Import the specific type if needed
+
+toolRegistry["create_webset_async"] = {
+  name: "create_webset_async",
+  description: "Initiates an asynchronous Webset creation job. Returns a jobId to track the process.",
+  // Schema is similar to create_webset, but handler returns jobId
+  schema: {
+    apiKey: z.string().describe("Your Exa API key"),
+    search: z.object({
+      query: z.string().describe("Your search query. Required string describing what to look for."),
+      count: z.number().min(1).optional().describe("Number of items to find. Default: 10"),
+      entity: z.object({
+        type: z.enum(["company"]).optional().describe("Entity type. Currently only 'company' is supported")
+      }).optional().describe("Entity the Webset will return results for"),
+      criteria: z.array(
+        z.object({
+          description: z.string().describe("Description of the criterion")
+        })
+      ).optional().describe("Criteria for evaluating results")
+    }).describe("Search parameters for the Webset"),
+    enrichments: z.array(
+      z.object({
+        description: z.string().describe("Description of the enrichment task"),
+        format: z.enum(["text", "date", "number", "options", "email", "phone"]).optional()
+          .describe("Format of the enrichment response"),
+        options: z.array(
+          z.object({
+            label: z.string().describe("Label for the option")
+          })
+        ).optional().describe("Options for the enrichment"),
+        metadata: z.record(z.string().max(1000)).optional().describe("Metadata for the enrichment")
+      })
+    ).optional().describe("Array of enrichment objects"),
+    externalId: z.string().optional().describe("External identifier for the Webset"),
+    metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs")
+  },
+  handler: async (args) => {
+    const requestId = `create_webset_async-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logger = createRequestLogger(requestId, 'create_webset_async');
+    logger.start("Initiating async Webset creation");
+
+    try {
+      // Type assertion to match ExaCreateWebsetParams expected by the manager
+      const params = args as ExaCreateWebsetParams;
+      const jobId = await websetJobManager.startWebsetJob(params);
+
+      logger.log(`Async job started with ID: ${jobId}`);
+      logger.complete();
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ jobId: jobId }, null, 2)
+        }]
+      };
+    } catch (error) {
+      logger.error(error);
+      return {
+        content: [{
+          type: "text",
+          text: `Create Webset Async error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
+
+toolRegistry["get_webset_job_status"] = {
+  name: "get_webset_job_status",
+  description: "Retrieves the status and results of an asynchronous Webset creation job.",
+  schema: {
+    jobId: z.string().describe("The ID of the job to check status for"),
+    apiKey: z.string().describe("Your Exa API key (required for fetching updates from Exa)"),
+  },
+  handler: async ({ jobId, apiKey }) => {
+    const requestId = `get_webset_job_status-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const logger = createRequestLogger(requestId, 'get_webset_job_status');
+    logger.start(`Checking status for job ID: ${jobId}`);
+
+    try {
+      const jobStatusData = await websetJobManager.getJobStatus(jobId, apiKey);
+
+      logger.log(`Job status retrieved: ${jobStatusData.status}`);
+      logger.complete();
+
+      // Format the response clearly
+      let message = `Job ${jobId} status: ${jobStatusData.status}.`;
+      if (jobStatusData.status === JobStatus.COMPLETED) {
+        message += " Webset creation completed successfully.";
+      } else if (jobStatusData.status === JobStatus.FAILED) {
+        message += ` Job failed: ${jobStatusData.error}`;
+      } else if (jobStatusData.status === JobStatus.RUNNING) {
+        const progressPercent = Math.round((jobStatusData.results?.searches?.[0]?.progress?.completion || 0) * 100);
+        message += ` Webset creation is in progress (${progressPercent}% complete). Check back later.`;
+      } else if (jobStatusData.status === JobStatus.PENDING) {
+         message += ` Job is pending initiation. Check back shortly.`;
+      }
+
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            jobId: jobId,
+            status: jobStatusData.status,
+            message: message,
+            results: jobStatusData.status === JobStatus.COMPLETED ? jobStatusData.results : null, // Only include full results on completion
+            error: jobStatusData.error,
+          }, null, 2)
+        }],
+        isError: jobStatusData.status === JobStatus.FAILED
+      };
+    } catch (error) {
+      logger.error(error);
+      return {
+        content: [{
+          type: "text",
+          text: `Get Webset Job Status error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
+      };
+    }
+  },
+  enabled: true
+};
+

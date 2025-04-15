@@ -143,28 +143,37 @@ The Exa MCP server includes the following tools:
 - **research_paper_search**: Specialized search focused on academic papers and research content. Supports HTTP streaming.
 - **twitter_search**: Dedicated Twitter/X.com search that finds tweets, profiles, and conversations. Supports HTTP streaming.
 
-#### Websets Management Tools
-- **create_webset**: [DEPRECATED] Create a new Webset for curated web content collections. May time out for long-running operations.
-- **get_webset**: [DEPRECATED] Retrieve a specific Webset by ID.
-- **initiate_webset**: Start the creation of a new Webset and immediately return with a tracking ID. Solves the timeout problem.
-- **get_webset_status**: Check the status of a Webset creation process and retrieve results when complete.
-- **update_webset**: Update an existing Webset's metadata.
-- **list_websets**: List all available Websets with pagination support.
-- **cancel_webset**: Cancel a running Webset.
-- **delete_webset**: Delete a Webset by ID.
+#### Websets Management Tools (Asynchronous - Recommended)
+- **`create_webset_async`**: Initiates an asynchronous job to create a Webset. Returns a `jobId`. (See Asynchronous Workflow section)
+- **`get_webset_job_status`**: Checks the status and retrieves results of an asynchronous Webset job using its `jobId`. (See Asynchronous Workflow section)
 
-#### Two-Phase Webset Creation
+#### Websets Management Tools (Legacy / Direct)
+- **`create_webset`**: [DEPRECATED] Synchronously creates a Webset. May time out.
+- **`get_webset`**: [DEPRECATED] Retrieves a specific Webset by ID.
+- **`initiate_webset`**: [DEPRECATED - Use `create_webset_async`] Starts synchronous creation, returns Webset ID. (See Two-Phase section)
+- **`get_webset_status`**: [DEPRECATED - Use `get_webset_job_status`] Checks status of synchronous creation using Webset ID. (See Two-Phase section)
+- **`update_webset`**: Updates an existing Webset's metadata.
+- **`list_websets`**: Lists all available Websets with pagination support.
+- **`cancel_webset`**: Cancels a running Webset creation job.
+- **`delete_webset`**: Deletes a Webset by ID.
 
-Websets creation can be a long-running process that may exceed typical MCP timeouts (60 seconds). To solve this issue, we've implemented a two-phase approach:
+#### Research Utility Tools
+- **`store_research_finding`**: Stores a text finding with its source, optionally linked to a `jobId`. (See Research Utility Tools section)
+
+#### Two-Phase Webset Creation (Legacy)
+
+**Note:** The [Asynchronous Webset Workflow](#asynchronous-webset-workflow-recommended) is now the recommended approach for handling long-running Webset creation, as it offers more flexibility. This two-phase method remains available but is less preferred.
+
+Websets creation can be a long-running process that may exceed typical MCP timeouts (60 seconds). This legacy two-phase approach uses `initiate_webset` and `get_webset_status`:
 
 1. **Phase 1: Initiate Webset Creation**
-   - Use the `initiate_webset` tool to start the process
-   - Returns immediately with a Webset ID for tracking
+   - Use the `initiate_webset` tool (now deprecated) to start the process.
+   - Returns immediately with a Webset ID for tracking.
 
-2. **Phase 2: Check Status & Retrieve Results**  
-   - Use the `get_webset_status` tool with the Webset ID
-   - Check periodically until completion
-   - When `isComplete=true`, the full results are available
+2. **Phase 2: Check Status & Retrieve Results**
+   - Use the `get_webset_status` tool (now deprecated) with the Webset ID.
+   - Check periodically until completion.
+   - When `isComplete=true`, the full results are available.
 
 Example pattern for Claude:
 ```
@@ -250,6 +259,96 @@ This script demonstrates:
 
 You can use this pattern in your own applications when working with long-running Exa Websets.
 
+### Asynchronous Webset Workflow (Recommended)
+
+For more complex research tasks that involve creating Websets alongside other actions like web searches, a fully asynchronous workflow is available. This allows you to initiate a Webset creation job and continue interacting with the MCP server (e.g., using `web_search` or `store_research_finding`) while the Webset is processed in the background.
+
+This workflow uses the following tools:
+
+*   **`create_webset_async`**:
+    *   **Purpose**: Initiates an asynchronous job to create a Webset based on specified criteria (similar parameters to the deprecated `create_webset`).
+    *   **Input**: Search query, number of results, etc.
+    *   **Output**: Returns a unique `jobId` immediately, allowing other operations to proceed.
+
+*   **`get_webset_job_status`**:
+    *   **Purpose**: Checks the status and retrieves results of an asynchronous Webset creation job.
+    *   **Input**: The `jobId` obtained from `create_webset_async`.
+    *   **Output**: An object containing the job's current `status` (e.g., `pending`, `processing`, `completed`, `failed`), `results` (if completed), or `error` details (if failed). This tool needs to be called periodically to get updates until the status is `completed` or `failed`.
+
+**Concurrency:** While an asynchronous job initiated by `create_webset_async` is running, you can use other tools like `web_search`, `research_paper_search`, or `store_research_finding` without waiting for the Webset job to finish.
+
+**Example Interaction:**
+
+1.  **Start the async job:**
+    ```
+    Claude, please create a webset asynchronously for "latest advancements in renewable energy technologies", find 15 results.
+    ```
+2.  **Claude uses `create_webset_async` and gets a `jobId`:**
+    ```json
+    { "jobId": "job_async_12345abcde" }
+    ```
+3.  **Perform other tasks while waiting:**
+    ```
+    Now, search the web for reviews of the latest solar panel efficiencies.
+    ```
+    *(Claude uses `web_search`)*
+4.  **Store a finding:**
+    ```
+    Store this finding: 'XYZ Solar claims 25% efficiency in their new panel.' with source 'https://example-review.com' and associate it with job 'job_async_12345abcde'.
+    ```
+    *(Claude uses `store_research_finding`)*
+5.  **Check job status periodically:**
+    ```
+    What's the status of the webset job 'job_async_12345abcde'?
+    ```
+6.  **Claude uses `get_webset_job_status`:**
+    ```json
+    {
+      "jobId": "job_async_12345abcde",
+      "status": "processing",
+      "progress": "Fetching results...",
+      "results": null,
+      "error": null
+    }
+    ```
+7.  **Eventually, the job completes:**
+    ```json
+    {
+      "jobId": "job_async_12345abcde",
+      "status": "completed",
+      "progress": "Done",
+      "results": {
+        // Full webset results here
+      },
+      "error": null
+    }
+    ```
+
+This asynchronous approach provides greater flexibility for complex research workflows.
+
+
+### Research Utility Tools
+
+These tools assist during the research process, especially when using the asynchronous workflow.
+
+*   **`store_research_finding`**:
+    *   **Purpose**: Allows storing arbitrary text findings discovered during research (e.g., from `web_search` or user input) alongside their source.
+    *   **Input**:
+        *   `finding` (string): The text content of the finding.
+        *   `source` (string): The URL or origin of the finding.
+        *   `jobId` (string, optional): Associates the finding with a specific asynchronous Webset job.
+    *   **Storage**: Findings are appended to a local JSON file named `research_findings.json` in the server's working directory.
+    *   **Use Case**: Useful for collecting snippets, quotes, or key data points during a research session, potentially linking them back to the Webset job they relate to.
+
+**Example:**
+
+```
+Claude, store the finding 'Quantum computing market projected to reach $50B by 2030.' from source 'https://market-report.example.com'.
+```
+
+*(Claude uses `store_research_finding`)*
+
+
 #### Webset Items Tools
 - **get_item**: Retrieve a specific item from a Webset.
 - **list_items**: List all items in a Webset with filtering options and streaming support.
@@ -277,7 +376,7 @@ You can choose which tools to enable by adding the `--tools` parameter to your C
       "command": "npx",
       "args": [
         "/path/to/exa-mcp-server/build/index.js",
-        "--tools=web_search,create_webset,list_webhooks"
+        "--tools=web_search,create_webset_async,get_webset_job_status,store_research_finding,list_websets"
       ],
       "env": {
         "EXA_API_KEY": "your-api-key-here"

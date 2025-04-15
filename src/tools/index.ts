@@ -7,6 +7,7 @@ import "./researchPaperSearch.js";
 import "./twitterSearch.js";
 // Import all websets tools via their index
 import "./websets/index.js";
+import "./storage.js"; // Import the new storage tool
 
 // When adding a new tool, import it here
 // import "./newTool.js"; 
