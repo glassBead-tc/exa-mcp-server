@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { Protocol } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { ListPromptsRequestSchema, GetPromptRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';

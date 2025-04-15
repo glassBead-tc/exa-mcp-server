@@ -120,7 +120,10 @@ code %APPDATA%\Claude\claude_desktop_config.json
   "mcpServers": {
     "exa": {
       "command": "npx",
-      "args": ["/path/to/exa-mcp-server/build/index.js"],
+      "args": [
+        "/path/to/exa-mcp-server/build/index.js",
+        "--tools=web_search,initiate_webset,get_webset_status,list_websets"
+      ],
       "env": {
         "EXA_API_KEY": "your-api-key-here"
       }
@@ -141,12 +144,111 @@ The Exa MCP server includes the following tools:
 - **twitter_search**: Dedicated Twitter/X.com search that finds tweets, profiles, and conversations. Supports HTTP streaming.
 
 #### Websets Management Tools
-- **create_webset**: Create a new Webset for curated web content collections.
-- **get_webset**: Retrieve a specific Webset by ID.
+- **create_webset**: [DEPRECATED] Create a new Webset for curated web content collections. May time out for long-running operations.
+- **get_webset**: [DEPRECATED] Retrieve a specific Webset by ID.
+- **initiate_webset**: Start the creation of a new Webset and immediately return with a tracking ID. Solves the timeout problem.
+- **get_webset_status**: Check the status of a Webset creation process and retrieve results when complete.
 - **update_webset**: Update an existing Webset's metadata.
 - **list_websets**: List all available Websets with pagination support.
 - **cancel_webset**: Cancel a running Webset.
 - **delete_webset**: Delete a Webset by ID.
+
+#### Two-Phase Webset Creation
+
+Websets creation can be a long-running process that may exceed typical MCP timeouts (60 seconds). To solve this issue, we've implemented a two-phase approach:
+
+1. **Phase 1: Initiate Webset Creation**
+   - Use the `initiate_webset` tool to start the process
+   - Returns immediately with a Webset ID for tracking
+
+2. **Phase 2: Check Status & Retrieve Results**  
+   - Use the `get_webset_status` tool with the Webset ID
+   - Check periodically until completion
+   - When `isComplete=true`, the full results are available
+
+Example pattern for Claude:
+```
+# First create the webset and get the ID
+Call initiate_webset with your search parameters
+Remember the websetId from the response
+
+# Then periodically check status until complete
+Call get_webset_status with the websetId
+Wait a reasonable time (5-15 seconds) if still in progress
+Repeat until isComplete=true
+```
+
+Here's an example of the typical interaction flow:
+
+1. **Start the webset creation:**
+   ```
+   Claude, please initiate a webset with a search for "AI startups in healthcare" and find 20 results.
+   ```
+
+2. **Claude initiates the webset using the initiate_webset tool and receives a tracking ID:**
+   ```json
+   {
+     "websetId": "wbs_01H2X3Y4Z5A6B7C8D9E0F",
+     "status": "running",
+     "searchStatus": "created",
+     "message": "Webset creation initiated. Use get_webset_status to check progress and retrieve results when complete."
+   }
+   ```
+
+3. **The user asks to check status:**
+   ```
+   Check if that webset is ready yet. If not, let me know the progress.
+   ```
+
+4. **Claude checks status using get_webset_status:**
+   ```json
+   {
+     "websetId": "wbs_01H2X3Y4Z5A6B7C8D9E0F",
+     "status": "running",
+     "searchStatus": "running",
+     "progressPercent": 35,
+     "isComplete": false,
+     "isCanceled": false,
+     "message": "Webset creation in progress. Continue checking with get_webset_status."
+   }
+   ```
+
+5. **After a few more status checks, the webset completes:**
+   ```json
+   {
+     "websetId": "wbs_01H2X3Y4Z5A6B7C8D9E0F",
+     "status": "idle",
+     "searchStatus": "completed",
+     "progressPercent": 100,
+     "isComplete": true,
+     "isCanceled": false,
+     "details": {
+       // Full webset details here
+     }
+   }
+   ```
+
+### Running the Two-Phase Demo
+
+We've included a demo script that shows how the two-phase approach works outside of Claude:
+
+```bash
+# Navigate to the examples directory
+cd examples
+
+# Install dependencies
+npm install
+
+# Run the demo (replace with your actual API key)
+EXA_API_KEY=your-api-key-here npm run demo
+```
+
+This script demonstrates:
+1. How to initiate a webset creation
+2. How to poll for status until completion
+3. How to handle the completed results
+
+You can use this pattern in your own applications when working with long-running Exa Websets.
 
 #### Webset Items Tools
 - **get_item**: Retrieve a specific item from a Webset.
@@ -240,6 +342,17 @@ Find tweets from @samaltman that were published in the last week about AI safety
 ### Websets Management Examples
 
 ```
+# Using the recommended two-phase approach for long-running webset creation
+Create a new webset about AI startups in Europe using the two-phase approach to handle potential timeouts.
+```
+
+```
+# Check on the status of a previously initiated webset
+Check if my webset about AI startups is complete and retrieve the results if it's ready.
+```
+
+```
+# Traditional approach (may timeout for complex searches)
 Create a new Webset to collect information about renewable energy startups in Europe.
 ```
 
@@ -247,70 +360,4 @@ Create a new Webset to collect information about renewable energy startups in Eu
 List all items in my webset about climate technology.
 ```
 
-```
-Update my webset description to include more specific focus areas.
-```
-
 ### Webhooks & Events Examples
-
-```
-Set up a webhook for my Webset that notifies my system whenever new items are added.
-```
-
-```
-List all my active webhooks and check their recent delivery attempts.
-```
-
-```
-Show me all events related to my Webset from the last 24 hours.
-```
-
-The server will:
-
-1. Process the request appropriately based on the command
-2. Query the appropriate Exa API endpoint with optimal settings
-3. Return formatted results to Claude, using streaming when available
-4. Handle webhooks and events for automation
-
-
-## Testing with MCP Inspector 🔍
-
-You can test the server directly using the MCP Inspector:
-
-```bash
-npx @modelcontextprotocol/inspector node ./build/index.js
-```
-
-This opens an interactive interface where you can explore the server's capabilities, execute search queries, and view cached search results.
-
-## Troubleshooting 🔧
-
-### Common Issues
-
-1. **Server Not Found**
-   * Verify the npm link is correctly set up
-   * Check Claude Desktop configuration syntax
-   * Ensure Node.js is properly installed
-
-2. **API Key Issues**
-   * Confirm your EXA_API_KEY is valid
-   * Check the EXA_API_KEY is correctly set in the Claude Desktop config
-   * Verify no spaces or quotes around the API key
-
-3. **Connection Issues**
-   * Restart Claude Desktop completely
-   * Check Claude Desktop logs:
-   
-   ```bash
-   # macOS
-   tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
-   
-   # Windows
-   type "%APPDATA%\Claude\logs\mcp*.log"
-   ```
-
-## Acknowledgments 🙏
-
-* [Exa AI](https://exa.ai) for their powerful search API
-* [Model Context Protocol](https://modelcontextprotocol.io) for the MCP specification
-* [Anthropic](https://anthropic.com) for Claude Desktop
