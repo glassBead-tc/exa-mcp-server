@@ -31,9 +31,7 @@
     "prepare": "npm run build",
     "watch": "tsc --watch",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "prepublishOnly": "npm run build",
-    "test:exa-js": "cd exa-js && npx vitest run",
-    "test:all": "npm run test:exa-js"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0",

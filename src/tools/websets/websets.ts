@@ -3,7 +3,7 @@ import axios from "axios";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
 import { ExaWebsetsRequest, ExaWebsetsResponse } from "../../types.js";
-import { createExaWebsetsClient } from "../../utils/exaWebsetsClient.js";
+import { ExaWebsetsClient } from "../../utils/exaWebsetsClient.js"; // Corrected import name
 
 toolRegistry["get_webset_status"] = {
   name: "get_webset_status",
@@ -22,7 +22,7 @@ toolRegistry["get_webset_status"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use 'new' to instantiate the class
 
       logger.log("Getting Webset status");
       // Get the webset with optional expand parameter
@@ -616,7 +616,6 @@ toolRegistry["create_webset_async"] = {
   description: "Initiates an asynchronous Webset creation job. Returns a jobId to track the process.",
   // Schema is similar to create_webset, but handler returns jobId
   schema: {
-    apiKey: z.string().describe("Your Exa API key"),
     search: z.object({
       query: z.string().describe("Your search query. Required string describing what to look for."),
       count: z.number().min(1).optional().describe("Number of items to find. Default: 10"),
@@ -645,14 +644,24 @@ toolRegistry["create_webset_async"] = {
     externalId: z.string().optional().describe("External identifier for the Webset"),
     metadata: z.record(z.string().max(1000)).optional().describe("Metadata key-value pairs")
   },
-  handler: async (args) => {
+  handler: async (args) => { // apiKey removed from args destructuring
     const requestId = `create_webset_async-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logger = createRequestLogger(requestId, 'create_webset_async');
     logger.start("Initiating async Webset creation");
 
+    // ADDED: Read API key from environment
+    const apiKey = process.env.EXA_API_KEY;
+    if (!apiKey) {
+      logger.error("EXA_API_KEY environment variable is not set.");
+      return {
+        content: [{ type: "text", text: "Server configuration error: EXA_API_KEY is missing." }],
+        isError: true
+      };
+    }
+
     try {
-      // Type assertion to match ExaCreateWebsetParams expected by the manager
-      const params = args as ExaCreateWebsetParams;
+      // Pass apiKey along with other args to startWebsetJob
+      const params = { ...args, apiKey } as ExaCreateWebsetParams; // Add apiKey back for the manager
       const jobId = await websetJobManager.startWebsetJob(params);
 
       logger.log(`Async job started with ID: ${jobId}`);
@@ -683,14 +692,25 @@ toolRegistry["get_webset_job_status"] = {
   description: "Retrieves the status and results of an asynchronous Webset creation job.",
   schema: {
     jobId: z.string().describe("The ID of the job to check status for"),
-    apiKey: z.string().describe("Your Exa API key (required for fetching updates from Exa)"),
+    // REMOVED apiKey from schema
   },
-  handler: async ({ jobId, apiKey }) => {
+  handler: async ({ jobId }) => { // apiKey removed from args destructuring
     const requestId = `get_webset_job_status-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logger = createRequestLogger(requestId, 'get_webset_job_status');
     logger.start(`Checking status for job ID: ${jobId}`);
 
+    // ADDED: Read API key from environment
+    const apiKey = process.env.EXA_API_KEY;
+    if (!apiKey) {
+      logger.error("EXA_API_KEY environment variable is not set.");
+      return {
+        content: [{ type: "text", text: "Server configuration error: EXA_API_KEY is missing." }],
+        isError: true
+      };
+    }
+
     try {
+      // Pass the retrieved apiKey to getJobStatus
       const jobStatusData = await websetJobManager.getJobStatus(jobId, apiKey);
 
       logger.log(`Job status retrieved: ${jobStatusData.status}`);
