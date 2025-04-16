@@ -1,4 +1,4 @@
-import { Exa, type Webset, type CreateWebsetParameters } from 'exa-js'; // Use named import for class and types
+import { Exa, type Webset, type CreateWebsetParameters, type CreateEnrichmentParameters, type CreateWebhookParameters, type Webhook, type ListWebhooksOptions, type ListWebhooksResponse } from 'exa-js'; // Added correct Webhook types
 import { log } from './logger.js'; // Assuming logger is in the same directory
 
 // Define possible expand values based on Exa documentation/usage
@@ -64,6 +64,135 @@ export class ExaWebsetsClient {
       return webset;
     } catch (error: any) {
       log(`[${this.requestId}] ERROR: Error getting Webset ${websetId}: ${error.message}`); // Remove second arg
+      throw error;
+    }
+  }
+
+
+  /**
+   * Creates a new Enrichment for a Webset.
+   * @param websetId - The ID of the Webset.
+   * @param params - Parameters for creating the Enrichment.
+   * @returns The created Enrichment object (using any for now).
+   */
+  async createEnrichment(websetId: string, params: CreateEnrichmentParameters): Promise<any> { // Changed return type to any
+    log(`[${this.requestId}] Creating Enrichment for Webset ${websetId} with format: ${params.format}`);
+    try {
+      const enrichment = await this.exa.websets.enrichments.create(websetId, params);
+      log(`[${this.requestId}] Enrichment created with ID: ${enrichment.id}`);
+      return enrichment;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error creating Enrichment for Webset ${websetId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Lists Enrichments for a Webset by retrieving the Webset with enrichments expanded.
+   * @param websetId - The ID of the Webset.
+   * @returns The Webset object containing enrichments.
+   */
+  async listEnrichments(websetId: string): Promise<Webset> { // Changed return type to Webset
+    log(`[${this.requestId}] Listing Enrichments for Webset ${websetId} via get with expand`);
+    try {
+      // Use getWebset method with expand option
+      const webset = await this.getWebset(websetId, ['enrichments']);
+      const enrichmentCount = webset.enrichments ? webset.enrichments.length : 0;
+      log(`[${this.requestId}] Retrieved ${enrichmentCount} Enrichments for Webset ${websetId}`);
+      return webset; // Return the whole webset object
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error listing Enrichments for Webset ${websetId} via get: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Lists Items for a Webset with optional pagination.
+   * @param websetId - The ID of the Webset.
+   * @param options - Optional parameters like limit and cursor.
+   * @returns The list response containing items (using any for now).
+   */
+  async listItems(websetId: string, options?: { limit?: number; cursor?: string }): Promise<any> { // Changed return type to any
+    log(`[${this.requestId}] Listing Items for Webset ${websetId} with options: ${JSON.stringify(options)}`);
+    try {
+      const response = await this.exa.websets.items.list(websetId, options);
+      log(`[${this.requestId}] Retrieved ${response.data.length} Items for Webset ${websetId}`);
+      return response;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error listing Items for Webset ${websetId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieves a specific Item from a Webset.
+   * @param websetId - The ID of the Webset.
+   * @param itemId - The ID of the Item.
+   * @returns The retrieved Item object (using any for now).
+   */
+  async getItem(websetId: string, itemId: string): Promise<any> { // Changed return type to any
+    log(`[${this.requestId}] Getting Item ${itemId} from Webset ${websetId}`);
+    try {
+      const item = await this.exa.websets.items.get(websetId, itemId);
+      log(`[${this.requestId}] Retrieved Item ${itemId}`);
+      return item;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error getting Item ${itemId} from Webset ${websetId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes a specific Item from a Webset.
+   * @param websetId - The ID of the Webset.
+   * @param itemId - The ID of the Item.
+   * @returns The delete response (using any for now).
+   */
+  async deleteItem(websetId: string, itemId: string): Promise<any> { // Changed return type to any
+    log(`[${this.requestId}] Deleting Item ${itemId} from Webset ${websetId}`);
+    try {
+      const response = await this.exa.websets.items.delete(websetId, itemId);
+      log(`[${this.requestId}] Deleted Item ${itemId}`);
+      return response;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error deleting Item ${itemId} from Webset ${websetId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+
+  /**
+   * Creates a new Webhook.
+   * @param params - Parameters for creating the Webhook.
+   * @returns The created Webhook object.
+   */
+  async createWebhook(params: CreateWebhookParameters): Promise<Webhook> {
+    log(`[${this.requestId}] Creating Webhook for URL: ${params.url}`);
+    try {
+      // Use this.exa.websets.webhooks.create based on SDK structure
+      const webhook = await this.exa.websets.webhooks.create(params);
+      log(`[${this.requestId}] Webhook created with ID: ${webhook.id}`);
+      return webhook;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error creating Webhook: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Lists Webhooks with optional pagination.
+   * @param options - Optional parameters like limit and cursor.
+   * @returns The list response containing webhooks.
+   */
+  async listWebhooks(options?: ListWebhooksOptions): Promise<ListWebhooksResponse> {
+    log(`[${this.requestId}] Listing Webhooks with options: ${JSON.stringify(options)}`);
+    try {
+      // Use this.exa.websets.webhooks.list based on SDK structure
+      const response = await this.exa.websets.webhooks.list(options);
+      log(`[${this.requestId}] Retrieved ${response.data.length} Webhooks`);
+      return response;
+    } catch (error: any) {
+      log(`[${this.requestId}] ERROR: Error listing Webhooks: ${error.message}`);
       throw error;
     }
   }

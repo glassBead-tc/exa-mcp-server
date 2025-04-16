@@ -29,8 +29,9 @@ COPY package.json package-lock.json ./
 # Install only production dependencies
 RUN npm ci --production --ignore-scripts
 
-# Set environment variable for the Exa API key
-ENV EXA_API_KEY=your-api-key-here
+# The EXA_API_KEY should be provided as an environment variable at runtime.
+# Example: docker run -e EXA_API_KEY='your-actual-key' ... your-image-name
+# Ensure this variable is configured in your deployment environment (e.g., Smithery).
 
 # Expose the port the app runs on
 EXPOSE 3000
