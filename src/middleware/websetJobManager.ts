@@ -1,18 +1,18 @@
 // src/middleware/websetJobManager.ts
-import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import {
   JobData,
   JobStatus,
   ExaCreateWebsetParams,
-  ExaGetWebsetStatusParams,
   ExaWebsetsResponse, // Assuming this type covers the response for both create and get status
-} from '../types.js'; // Adjust path as needed
-import { createRequestLogger } from '../utils/logger.js'; // Adjust path as needed
+} from '../types.js';
+import { createRequestLogger } from '../utils/logger.js';
+import { ExaWebsetsClient } from '../utils/exaWebsetsClient.js'; // Import the class
+import { CreateEnrichmentParametersFormat } from 'exa-js';
 
 const logger = createRequestLogger('WebsetJobManager', 'middleware');
 
-class WebsetJobManager {
+export class WebsetJobManager {
   private jobs: Map<string, JobData>;
 
   constructor() {
@@ -20,45 +20,7 @@ class WebsetJobManager {
     logger.log('WebsetJobManager initialized');
   }
 
-  // --- Private Helper for Exa API Calls ---
-  private async _callExaApi<T>(
-    method: 'get' | 'post' | 'delete', // Add other methods if needed
-    url: string,
-    apiKey: string,
-    payload?: any
-  ): Promise<T> {
-    const axiosInstance = axios.create({
-      baseURL: 'https://api.exa.ai',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      timeout: 30000, // 30 seconds timeout
-    });
-
-    try {
-      let response;
-      if (method === 'post') {
-        response = await axiosInstance.post<T>(url, payload);
-      } else if (method === 'get') {
-        response = await axiosInstance.get<T>(url, { params: payload }); // Use params for GET
-      } else if (method === 'delete') {
-        response = await axiosInstance.delete<T>(url);
-      } else {
-        throw new Error(`Unsupported HTTP method: ${method}`);
-      }
-      return response.data;
-    } catch (error) {
-      logger.error(`Exa API call failed (${method.toUpperCase()} ${url}): ${error instanceof Error ? error.message : String(error)}`);
-      if (axios.isAxiosError(error)) {
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-        throw new Error(`Exa API Error (${statusCode}): ${errorMessage}`);
-      }
-      throw error; // Re-throw other errors
-    }
-  }
+  // No longer need the private _callExaApi helper as we're using the ExaWebsetsClient
 
   // --- Public Job Management Methods ---
 
@@ -83,19 +45,32 @@ class WebsetJobManager {
     logger.log(`Job ${jobId}: Created (Status: PENDING)`);
 
     try {
-      // Prepare payload for Exa API
+      // Create Exa client with the API key
       const { apiKey, ...createPayload } = params;
+      const exaClient = new ExaWebsetsClient(apiKey, `job-${jobId}`); // Instantiate the class
 
       logger.log(`Job ${jobId}: Calling Exa create_webset API`);
-      const response = await this._callExaApi<ExaWebsetsResponse>(
-        'post',
-        '/websets/v0/websets',
-        apiKey,
-        createPayload
-      );
+      // Convert our internal types to the SDK types
+      const sdkParams = {
+        search: {
+          query: createPayload.search.query,
+          count: createPayload.search.count || 10, // Provide default if undefined
+          entity: createPayload.search.entity,
+          criteria: createPayload.search.criteria
+        },
+        enrichments: createPayload.enrichments ? createPayload.enrichments.map(e => ({
+          description: e.description,
+          format: e.format as CreateEnrichmentParametersFormat,
+          options: e.options,
+          metadata: e.metadata
+        })) : undefined,
+        externalId: createPayload.externalId,
+        metadata: createPayload.metadata
+      };
+      const webset = await exaClient.createWebset(sdkParams);
 
       // Update job with websetId and set status to RUNNING
-      const websetId = response.id;
+      const websetId = webset.id;
       const updatedJobData: JobData = {
         ...initialJobData,
         websetId: websetId,
@@ -156,27 +131,15 @@ class WebsetJobManager {
 
     try {
       logger.log(`Job ${jobId}: Checking Exa status for Webset ${job.websetId}`);
-      const params: ExaGetWebsetStatusParams = {
-        apiKey,
-        websetId: job.websetId,
-        // expand: 'items', // Optionally expand to get full results on completion
-        includeDetails: true,
-      };
 
-      // Build the URL with optional expand parameter
-      let url = `/websets/v0/websets/${encodeURIComponent(params.websetId)}`;
-      if (params.expand) {
-        url += `?expand=${encodeURIComponent(params.expand)}`;
-      }
+      // Create Exa client with the API key
+      const exaClient = new ExaWebsetsClient(apiKey, `job-${jobId}`); // Instantiate the class
 
-      const response = await this._callExaApi<ExaWebsetsResponse>(
-        'get',
-        url,
-        apiKey
-      );
+      // Get the webset with the items expanded if specified
+      const expand = job.websetId ? ['items' as const] : undefined;
+      const websetData = await exaClient.getWebset(job.websetId as string, expand);
 
       // Update job status based on Exa response
-      const websetData = response;
       const searchStatus = websetData.searches.length > 0 ? websetData.searches[0].status : 'not_started';
       const isComplete = searchStatus === 'completed';
       const isCanceled = searchStatus === 'canceled'; // Treat canceled as failed for simplicity
@@ -315,9 +278,75 @@ class WebsetJobManager {
       }
     }
 
-  // Optional: Method to clean up old jobs if needed
-  // cleanupJobs(maxAgeMinutes: number) { ... }
+  /**
+   * Cleans up old jobs based on their age and status
+   * @param maxAgeMinutes Maximum age in minutes for jobs to keep
+   * @param keepCompletedJobs Whether to keep completed jobs regardless of age (default: false)
+   * @returns Number of jobs cleaned up
+   */
+  cleanupJobs(maxAgeMinutes: number, keepCompletedJobs: boolean = false): number {
+    logger.log(`Starting job cleanup (maxAge: ${maxAgeMinutes} minutes, keepCompleted: ${keepCompletedJobs})`);
+
+    const now = new Date();
+    const maxAgeMs = maxAgeMinutes * 60 * 1000;
+    let cleanupCount = 0;
+
+    // Create a list of jobs to remove to avoid modifying the map during iteration
+    const jobsToRemove: string[] = [];
+
+    for (const [jobId, job] of this.jobs.entries()) {
+      const jobAgeMs = now.getTime() - job.updatedAt.getTime();
+
+      // Skip completed jobs if keepCompletedJobs is true
+      if (keepCompletedJobs && job.status === JobStatus.COMPLETED) {
+        continue;
+      }
+
+      // Remove jobs that are older than maxAgeMs
+      if (jobAgeMs > maxAgeMs) {
+        jobsToRemove.push(jobId);
+        cleanupCount++;
+      }
+    }
+
+    // Remove the jobs
+    for (const jobId of jobsToRemove) {
+      this.jobs.delete(jobId);
+      logger.log(`Cleaned up job ${jobId} due to age`);
+    }
+
+    logger.log(`Job cleanup complete. Removed ${cleanupCount} jobs.`);
+    return cleanupCount;
+  }
+
+  /**
+   * Starts a periodic cleanup task
+   * @param intervalMinutes How often to run the cleanup (in minutes)
+   * @param maxAgeMinutes Maximum age of jobs to keep (in minutes)
+   * @param keepCompletedJobs Whether to keep completed jobs regardless of age
+   */
+  startPeriodicCleanup(intervalMinutes: number = 60, maxAgeMinutes: number = 1440, keepCompletedJobs: boolean = true): void {
+    logger.log(`Starting periodic job cleanup (interval: ${intervalMinutes} minutes, maxAge: ${maxAgeMinutes} minutes)`);
+
+    // Convert minutes to milliseconds
+    const intervalMs = intervalMinutes * 60 * 1000;
+
+    // Set up the interval
+    setInterval(() => {
+      try {
+        const cleanedCount = this.cleanupJobs(maxAgeMinutes, keepCompletedJobs);
+        if (cleanedCount > 0) {
+          logger.log(`Periodic cleanup removed ${cleanedCount} jobs`);
+        }
+      } catch (error) {
+        logger.error(`Error during periodic job cleanup: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }, intervalMs);
+  }
 }
 
 // Export a singleton instance
 export const websetJobManager = new WebsetJobManager();
+
+// Start periodic cleanup - runs every hour, keeps jobs for 24 hours, preserves completed jobs
+websetJobManager.startPeriodicCleanup(60, 1440, true);

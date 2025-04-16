@@ -3,7 +3,5 @@
  */
 
 // Export the StreamableHTTPServerTransport
-export { 
-  StreamableHTTPServerTransport,
-  StreamableHTTPServerTransportOptions
-} from './streamableHttp.js'; 
+export { StreamableHTTPServerTransport } from './streamableHttp.js';
+export type { StreamableHTTPServerTransportOptions } from './streamableHttp.js';

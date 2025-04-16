@@ -3,6 +3,7 @@ import axios from "axios";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
 import { ExaWebsetsRequest, ExaWebsetsResponse } from "../../types.js";
+import { createExaWebsetsClient } from "../../utils/exaWebsetsClient.js";
 
 toolRegistry["get_webset_status"] = {
   name: "get_webset_status",
@@ -20,27 +21,15 @@ toolRegistry["get_webset_status"] = {
     logger.start("Checking Webset status");
 
     try {
-      const axiosInstance = axios.create({
-        baseURL: "https://api.exa.ai",
-        headers: {
-          'accept': 'application/json',
-          'content-type': 'application/json',
-          'x-api-key': apiKey
-        },
-        timeout: 30000
-      });
-
-      // Build the URL with optional expand parameter
-      let url = `/websets/v0/websets/${encodeURIComponent(websetId)}`;
-      if (expand) {
-        url += `?expand=${encodeURIComponent(expand)}`;
-      }
+      // Create Exa client with the API key
+      const exaClient = createExaWebsetsClient(apiKey, requestId);
 
       logger.log("Getting Webset status");
-      const response = await axiosInstance.get<ExaWebsetsResponse>(url);
+      // Get the webset with optional expand parameter
+      const expandParam = expand ? [expand as 'items'] : undefined;
+      const websetData = await exaClient.getWebset(websetId, expandParam);
 
       // Calculate progress and determine if complete
-      const websetData = response.data;
       const searchProgress = websetData.searches.length > 0 ?
         websetData.searches[0].progress.completion : 0;
       const searchStatus = websetData.searches.length > 0 ?

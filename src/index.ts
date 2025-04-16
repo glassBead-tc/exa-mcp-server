@@ -9,17 +9,17 @@ import { randomUUID } from 'node:crypto';
 
 // Import the tool registry system
 import { toolRegistry } from "./tools/index.js";
-import { promptRegistry, Prompt } from "./prompts/registry.js";
-// Ensure prompts are loaded
-import "./prompts/index.js";
 import { log } from "./utils/logger.js";
 
 // Import our custom transports
 import { StreamableHTTPServerTransport } from './transports/index.js';
 import { websetJobManager } from './middleware/websetJobManager.js'; // Import the job manager
+import { webhookHandler } from './middleware/webhookHandler.js'; // Import the webhook handler
 
-// Export our custom transports
+// Export our custom transports and middleware
 export * from './transports/index.js';
+export { websetJobManager } from './middleware/websetJobManager.js';
+export { webhookHandler } from './middleware/webhookHandler.js';
 
 dotenv.config();
 
@@ -29,11 +29,6 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     description: 'Comma-separated list of tools to enable (if not specified, all enabled-by-default tools are used)',
     default: ''
-  })
-  .option('prompts', {
-    type: 'boolean',
-    description: 'Enable prompt capabilities',
-    default: true
   })
   .option('transport', {
     type: 'string',
@@ -56,11 +51,6 @@ const argv = yargs(hideBin(process.argv))
     description: 'List all available tools and exit',
     default: false
   })
-  .option('list-prompts', {
-    type: 'boolean',
-    description: 'List all available prompts and exit',
-    default: false
-  })
   .help()
   .argv;
 
@@ -70,7 +60,6 @@ const toolsString = argvObj['tools'] || '';
 const specifiedTools = new Set<string>(
   toolsString ? toolsString.split(',').map((tool: string) => tool.trim()) : []
 );
-const enablePrompts = argvObj['prompts'];
 const transportType = argvObj['transport'];
 const httpPort = argvObj['port'];
 const statelessMode = argvObj['stateless'];
@@ -78,40 +67,14 @@ const statelessMode = argvObj['stateless'];
 // List all available tools if requested
 if (argvObj['list-tools']) {
   console.log("Available tools:");
-  
+
   Object.entries(toolRegistry).forEach(([id, tool]) => {
     console.log(`- ${id}: ${tool.name}`);
     console.log(`  Description: ${tool.description}`);
     console.log(`  Enabled by default: ${tool.enabled ? 'Yes' : 'No'}`);
     console.log();
   });
-  
-  process.exit(0);
-}
 
-// List all available prompts if requested
-if (argvObj['list-prompts']) {
-  console.log("Available prompts:");
-  
-  let promptCount = 0;
-  Object.entries(promptRegistry).forEach(([id, prompt]) => {
-    const p = prompt as Prompt;
-    log(`Checking prompt: ${id}, enabled=${p.enabled}`);
-    if (p.enabled) {
-      promptCount++;
-      console.log(`- ${id}: ${p.name}`);
-      console.log(`  Description: ${p.description}`);
-      console.log(`  Arguments: ${p.arguments?.length || 0}`);
-      console.log(`  Enabled: ${p.enabled ? 'Yes' : 'No'}`);
-      console.log();
-    }
-  });
-  
-  if (promptCount === 0) {
-    console.log("No enabled prompts found.");
-    log("No enabled prompts found. Registry size: " + Object.keys(promptRegistry).length);
-  }
-  
   process.exit(0);
 }
 
@@ -123,11 +86,11 @@ if (!API_KEY) {
 
 /**
  * Exa AI Web Search MCP Server
- * 
+ *
  * This MCP server integrates Exa AI's search capabilities with Claude and other MCP-compatible clients.
  * Exa is a search engine and API specifically designed for up-to-date web searching and retrieval,
  * offering more recent and comprehensive results than what might be available in an LLM's training data.
- * 
+ *
  * The server provides tools that enable:
  * - Real-time web searching with configurable parameters
  * - Research paper searches
@@ -144,21 +107,21 @@ class ExaServer {
       name: "exa-search-server",
       version: "0.3.4"
     });
-    
+
     log("Server initialized");
   }
 
   private setupTools(): string[] {
     // Register tools based on specifications
     const registeredTools: string[] = [];
-    
+
     Object.entries(toolRegistry).forEach(([toolId, tool]) => {
       // If specific tools were provided, only enable those.
       // Otherwise, enable all tools marked as enabled by default
-      const shouldRegister = specifiedTools.size > 0 
-        ? specifiedTools.has(toolId) 
+      const shouldRegister = specifiedTools.size > 0
+        ? specifiedTools.has(toolId)
         : tool.enabled;
-      
+
       if (shouldRegister) {
         this.server.tool(
           tool.name,
@@ -169,43 +132,8 @@ class ExaServer {
         registeredTools.push(toolId);
       }
     });
-    
+
     return registeredTools;
-  }
-
-  private setupPrompts() {
-    if (!enablePrompts) return;
-
-    // Since we have legacy prompt format, let's manually expose the prompt capabilities
-    // Create a temporary server to handle the legacy prompt interface
-    Object.entries(promptRegistry).forEach(([promptId, p]) => {
-      const prompt = p as Prompt;
-      if (!prompt.enabled) return;
-
-      // Create the prompt registration with just name and description
-      this.server.prompt(
-        prompt.name,
-        prompt.description,
-        async (args: any) => {
-          try {
-            const messages = await Promise.resolve(prompt.getMessages(args || {}));
-            return {
-              messages: messages.map(msg => ({
-                role: msg.role,
-                content: typeof msg.content === 'string' 
-                  ? { type: "text", text: msg.content } 
-                  : msg.content
-              }))
-            };
-          } catch (error) {
-            console.error(`Error in prompt ${prompt.name}:`, error);
-            throw error;
-          }
-        }
-      );
-    });
-
-    log(`Prompts capability ${enablePrompts ? 'enabled' : 'disabled'}`);
   }
 
   private setupHttpServer(transport: StreamableHTTPServerTransport): http.Server {
@@ -230,8 +158,8 @@ class ExaServer {
         // Simple status endpoint
         if (req.url === '/status') {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ 
-            status: 'ok', 
+          res.end(JSON.stringify({
+            status: 'ok',
             name: 'exa-mcp-server',
             version: '0.3.4',
             transport: 'http'
@@ -262,14 +190,14 @@ class ExaServer {
               log(`Webset ID: ${websetId || 'N/A'}`);
               log(`Status: ${status || 'N/A'}`);
 
-              // Call the WebsetJobManager to handle the update
-              log(`Calling websetJobManager.handleWebhookUpdate for websetId: ${websetId}`);
-              websetJobManager.handleWebhookUpdate(payload)
+              // Use the dedicated webhook handler to process the update
+              log(`Calling webhookHandler.processWebhook for websetId: ${websetId}`);
+              webhookHandler.processWebhook(payload)
                 .then(() => {
-                  log(`Successfully processed webhook update for websetId: ${websetId}`);
+                  log(`Successfully processed webhook for websetId: ${websetId}`);
                 })
-                .catch(managerError => {
-                  log(`Error processing webhook update in WebsetJobManager for websetId ${websetId}: ${managerError instanceof Error ? managerError.message : String(managerError)}`);
+                .catch(handlerError => {
+                  log(`Error processing webhook for websetId ${websetId}: ${handlerError instanceof Error ? handlerError.message : String(handlerError)}`);
                 });
             } catch (error) {
               log(`Error parsing Exa webhook body: ${error instanceof Error ? error.message : String(error)}`);
@@ -281,43 +209,42 @@ class ExaServer {
           });
           return; // Return after setting up listeners and sending initial response
         }
-        
+
         res.writeHead(404).end('Not Found');
       }
     });
-    
+
     return httpServer;
   }
 
   async run(): Promise<void> {
     try {
-      // Set up tools and prompts before connecting
+      // Set up tools before connecting
       const registeredTools = this.setupTools();
-      this.setupPrompts();
-      
+
       log(`Starting Exa MCP server with ${registeredTools.length} tools: ${registeredTools.join(', ')}`);
-      
+
       if (transportType === 'http') {
         // HTTP transport mode
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: statelessMode ? () => undefined : () => randomUUID(),
           enableJsonResponse: false // Use SSE streaming by default
         });
-        
+
         // Set up error handler
         transport.onerror = (error) => {
           log(`Transport error: ${error.message}`);
         };
-        
+
         // Create and start HTTP server
         const httpServer = this.setupHttpServer(transport);
-        
+
         // Start the transport
         await transport.start();
-        
+
         // Connect the server to the transport
         await this.server.connect(transport);
-        
+
         // Start listening on the specified port
         httpServer.listen(httpPort, () => {
           log(`Exa Search MCP server running on HTTP at http://localhost:${httpPort}/mcp`);
@@ -326,12 +253,12 @@ class ExaServer {
       } else {
         // Default stdio transport mode
         const transport = new StdioServerTransport();
-        
+
         // Handle connection errors
         transport.onerror = (error) => {
           log(`Transport error: ${error.message}`);
         };
-        
+
         await this.server.connect(transport);
         log("Exa Search MCP server running on stdio");
       }
