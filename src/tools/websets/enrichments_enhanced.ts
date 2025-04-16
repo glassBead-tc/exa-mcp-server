@@ -4,8 +4,8 @@
 import { z } from "zod";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
-import { createExaWebsetsClient } from "../../utils/exaWebsetsClient.js";
-import { CreateEnrichmentParametersFormat } from "exa-js";
+import { ExaWebsetsClient } from "../../utils/exaWebsetsClient.js"; // Corrected import
+import { CreateEnrichmentParametersFormat } from "exa-js"; // Removed incorrect Enrichment type
 
 /**
  * Create a new enrichment for a Webset
@@ -44,7 +44,7 @@ toolRegistry["create_webset_enrichment"] = {
       }
 
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // Create the enrichment
       const enrichment = await exaClient.createEnrichment(websetId, {
@@ -108,13 +108,13 @@ toolRegistry["list_webset_enrichments"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // List the enrichments
       const response = await exaClient.listEnrichments(websetId);
       
-      // Format the enrichments
-      const formattedEnrichments = response.data.map(enrichment => ({
+      // Format the enrichments (enrichments are now directly on the response object)
+      const formattedEnrichments = response.enrichments?.map(enrichment => ({ // Access response.enrichments, remove type annotation
         id: enrichment.id,
         description: enrichment.description,
         format: enrichment.format,

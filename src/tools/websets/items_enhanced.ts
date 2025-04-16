@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
-import { createExaWebsetsClient } from "../../utils/exaWebsetsClient.js";
+import { ExaWebsetsClient } from "../../utils/exaWebsetsClient.js"; // Corrected import
 
 /**
  * Get all items from a Webset with advanced filtering and pagination
@@ -27,13 +27,13 @@ toolRegistry["get_webset_items_enhanced"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // Get items with pagination
       const response = await exaClient.listItems(websetId, { limit, cursor });
       
       // Format the response
-      const formattedItems = response.data.map(item => {
+      const formattedItems = response.data.map((item: any) => { // Added explicit 'any' type for item
         // Basic item data
         const formattedItem = {
           id: item.id,
@@ -110,7 +110,7 @@ toolRegistry["get_webset_item"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // Get the specific item
       const item = await exaClient.getItem(websetId, itemId);
@@ -167,7 +167,7 @@ toolRegistry["delete_webset_item"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // Delete the item
       const deletedItem = await exaClient.deleteItem(websetId, itemId);

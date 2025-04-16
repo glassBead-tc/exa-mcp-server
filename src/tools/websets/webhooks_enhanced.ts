@@ -4,8 +4,8 @@
 import { z } from "zod";
 import { toolRegistry } from "../config.js";
 import { createRequestLogger } from "../../utils/logger.js";
-import { createExaWebsetsClient } from "../../utils/exaWebsetsClient.js";
-import { EventType } from "exa-js";
+import { ExaWebsetsClient } from "../../utils/exaWebsetsClient.js"; // Corrected import
+import { EventType, Webhook } from "exa-js"; // Added Webhook type
 
 /**
  * Create a new webhook for Webset events
@@ -42,7 +42,7 @@ toolRegistry["create_webset_webhook"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // Create the webhook
       const webhook = await exaClient.createWebhook({
@@ -105,13 +105,13 @@ toolRegistry["list_webset_webhooks"] = {
 
     try {
       // Create Exa client with the API key
-      const exaClient = createExaWebsetsClient(apiKey, requestId);
+      const exaClient = new ExaWebsetsClient(apiKey, requestId); // Use new constructor
       
       // List the webhooks
       const response = await exaClient.listWebhooks({ limit, cursor });
       
       // Format the webhooks
-      const formattedWebhooks = response.data.map(webhook => ({
+      const formattedWebhooks = response.data.map((webhook: Webhook) => ({ // Used correct Webhook type
         id: webhook.id,
         url: webhook.url,
         status: webhook.status,
